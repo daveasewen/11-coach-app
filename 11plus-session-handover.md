@@ -264,8 +264,8 @@ leitnerBoxes[word] = {
 | `react.js` | Project root | ✅ React 18 UMD production (permanent — do not delete) |
 | `reactdom.js` | Project root | ✅ ReactDOM 18 UMD production (permanent — do not delete) |
 | `app-min.js` | Project root | ✅ Latest compiled + minified app (build artefact) |
-| `root-tips.js` | Project root | ⚠️ ~70 Latin/Greek root hooks — recreate from last HTML if missing |
-| `fill-blank-examples.js` | Project root | ⚠️ ~300 fill-blank sentences — recreate from last HTML if missing |
+| `root-tips.js` | Project root | ✅ 73 Latin/Greek root hooks — extracted and saved May 2026 |
+| `fill-blank-examples.js` | Project root | ✅ 238 fill-blank sentences — extracted and saved May 2026 |
 | `11plus-session-handover.md` | Project root | ✅ This file |
 | `11plus-roadmap.md` | Project root | ✅ Living product roadmap |
 | `11plus-coaching-context.md` | Project root | ✅ Full research doc (read-only) |
@@ -369,8 +369,8 @@ git commit -m "vX.Y — description"
 
 ---
 
-*Handover version: 1.5b*
-*App version: v1.5b*
-*Next session: v1.6 — Age band expansion (difficulty 1–2 words for age 8–9) + difficulty filter in session queue. Also consider: extend rootTips and fill-blank-examples coverage.*
+*Handover version: 1.5c*
+*App version: v1.5b (JSX updated — rebuild needed to deploy)*
+*Next session: v1.6 — Age band expansion (difficulty 1–2 words for age 8–9) + difficulty filter in session queue.*
 *Last updated: May 2026*
-*Audit note: v1.5b shipped — fill-blank sentences rewritten (~300 words, one clear answer each). v1.5 ROOT_TIPS layer live (~70 words). Build pipeline: use ./node_modules/.bin/babel with --plugins @babel/plugin-proposal-optional-chaining,@babel/plugin-proposal-nullish-coalescing-operator. NOT npx babel (resolves to Babel 6).*
+*Audit note: Antonym quality pass completed — perplexed, bewildered, dilapidated, gaunt, derelict all fixed. root-tips.js (73 entries) and fill-blank-examples.js (238 entries) extracted from app-min.js and saved to project root — build pipeline now fully intact. JSX is ahead of built artifact; rebuild before next Cowork artifact update.*
