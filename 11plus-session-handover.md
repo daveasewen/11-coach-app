@@ -117,7 +117,13 @@ An AI-enhanced coaching and testing tool for Dave's son (age 10–11) preparing 
 - **QPM on completion screen:** Questions-per-minute calculated from `sessionLog.timeMs` totals, displayed alongside score/correct/review.
 - VERSION bumped to `"1.2b"`
 
-### v1.5b (current — built, Cowork artifact live ✅)
+### v1.5c (current — JSX updated, rebuild needed before next Cowork artifact deploy)
+- **Antonym quality pass:** perplexed, bewildered, dilapidated, gaunt, derelict all fixed. "composed" removed from cognitive confusion words; "certain/enlightened/clear-headed/lucid/sturdy/sound/intact" substituted.
+- **💡 Simple Definition gated behind 📖 Definition:** on both option cards and question word header. Button sits at 35% opacity and is disabled until Definition has been opened. Forces student to engage with the proper definition first.
+- **DISTRACTOR_DICT expanded:** 804 → 956 entries. 163 new entries covering all words referenced 3+ times as synonyms/antonyms. Zero high-frequency distractor words now missing definitions.
+- **root-tips.js and fill-blank-examples.js rescued:** extracted from app-min.js and saved permanently to project root. Build pipeline fully safe.
+
+### v1.5b (built, Cowork artifact live ✅)
 - **Fill-blank sentence overrides:** ~300 words now have sentences written specifically for fill-blank questions. Short (≤12 words target), concrete, one clearly correct answer. Stored in `fill-blank-examples.js`, injected at build time as `FILL_BLANK_EXAMPLES`. Falls back to `word.example` if no override exists.
 - **`buildQuestion` updated:** uses `FILL_BLANK_EXAMPLES[word] || word.example` for fillblank. Regex now case-insensitive (`gi` flag).
 
@@ -370,7 +376,9 @@ git commit -m "vX.Y — description"
 ---
 
 *Handover version: 1.5c*
-*App version: v1.5b (JSX updated — rebuild needed to deploy)*
-*Next session: v1.6 — Age band expansion (difficulty 1–2 words for age 8–9) + difficulty filter in session queue.*
+*App version: v1.5c (JSX updated — rebuild + Cowork artifact update needed)*
+*Next session: v1.6 — User profiles (before any second user touches the app — mixing Leitner data would silently corrupt both). Then v1.7 — Age band expansion (difficulty 1–2 words for age 8–9).*
 *Last updated: May 2026*
-*Audit note: Antonym quality pass completed — perplexed, bewildered, dilapidated, gaunt, derelict all fixed. root-tips.js (73 entries) and fill-blank-examples.js (238 entries) extracted from app-min.js and saved to project root — build pipeline now fully intact. JSX is ahead of built artifact; rebuild before next Cowork artifact update.*
+*Rebuild needed: antonym fixes + 💡 gate + 163 new DISTRACTOR_DICT entries are in JSX but not yet in app-min.js or Cowork artifact. Run full build pipeline then update artifact.*
+*Progress note: Dave's son's Leitner data IS being saved in localStorage. It's real, not a prototype. Device-local only — no cloud sync.*
+*Profiles note: storage keys are currently flat (11plus:vocab-mastered etc). Adding profiles = prefix per user. Must do before second user. See roadmap v1.6.*

@@ -1,7 +1,7 @@
 # 11+ Coach App — Product Roadmap & Spec
 
 *Living document. Update this alongside the session handover after every significant change.*
-*Last updated: May 2026 — vocab bank scaled to 648 words (v1.4)*
+*Last updated: May 2026 — v1.5c JSX complete, rebuild pending*
 
 ---
 
@@ -129,7 +129,24 @@ NVR deprioritised — review August 2026 if other domains on track.
 2. Pilot integration — add `rootTip` to 60–80 words, wire into coaching prompt, test
 3. Full rollout — remaining words, filling gaps where no root hook is available
 
-### v1.6 — Age Band Expansion (Ages 8–9)
+### v1.6 — User Profiles
+
+**Goal:** Support more than one user without data collision. Must be done before a second person (sibling, tutor, etc.) uses the app — sharing a single flat storage namespace would silently corrupt both users' Leitner data.
+
+**Why now:** Dave's son's progress is real and being saved. Adding a second user without profiles would overwrite it.
+
+**Scope — targeted, not a rebuild:**
+
+| Feature | Priority | Notes |
+|---|---|---|
+| Profile selector on launch | High | Simple screen: pick your name. Two profiles to start (Dave's son + one spare). |
+| Per-user storage key prefix | High | `11plus:user:<id>:vocab-mastered` etc. Single-line change per storage key. |
+| Profile creation | Medium | Add name, select avatar/colour. Stored in `11plus:profiles`. |
+| Active profile in app header | Medium | Small indicator so it's always clear whose session this is. |
+
+**What doesn't change:** Leitner logic, question formats, vocab bank, AI coaching — all unchanged. This is purely a storage namespace + UI wrapper.
+
+### v1.7 — Age Band Expansion (Ages 8–9)
 
 **Goal:** Make the vocab bank useful for younger siblings and earlier-stage prep. No architecture changes needed — difficulty field already exists on every word.
 
@@ -151,7 +168,7 @@ NVR deprioritised — review August 2026 if other domains on track.
 
 **Note:** The ~85 Exam Ninja gap words filtered from v1.4 (judged too simple for 11+) are exactly right for the 8–9 band. That list is a near-complete starting point for difficulty 1–2.
 
-### v1.7 — New Question Domains
+### v1.8 — New Question Domains
 
 **Goal:** Start coverage of non-vocab domains.
 
