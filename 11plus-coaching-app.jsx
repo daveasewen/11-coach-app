@@ -1558,16 +1558,37 @@ function makeDistractors(wordEntry, field) {
     wordEntry.word,
   ]);
 
-  // Prefer same-POS words as distractors — more plausible
+  // Words semantically related to the target (its synonyms + antonyms)
+  const targetRelated = new Set([
+    ...(wordEntry.synonyms || []),
+    ...(wordEntry.antonyms || []),
+  ]);
+
   const samePosWords = VOCAB_BANK.filter(w =>
     w.word !== wordEntry.word && w.pos === wordEntry.pos
   );
-  let pool = samePosWords
+
+  // Priority 1: same-POS words that share semantic territory with the target
+  // (their synonyms or antonyms overlap with the target's synonyms/antonyms).
+  // These produce plausible near-miss distractors rather than random adjectives.
+  const semanticallyClose = samePosWords.filter(w => {
+    const wRelated = [...(w.synonyms || []), ...(w.antonyms || [])];
+    return wRelated.some(r => targetRelated.has(r));
+  });
+
+  let pool = semanticallyClose
     .flatMap(w => w[field] || [])
     .filter(d => !correctPool.has(d));
 
-  // Fall back to any POS if pool is too thin
+  // Priority 2: all same-POS if semantically close pool is too thin
   if (pool.length < 6) {
+    pool = samePosWords
+      .flatMap(w => w[field] || [])
+      .filter(d => !correctPool.has(d));
+  }
+
+  // Priority 3: any POS as last resort
+  if (pool.length < 3) {
     pool = VOCAB_BANK
       .filter(w => w.word !== wordEntry.word)
       .flatMap(w => w[field] || [])
