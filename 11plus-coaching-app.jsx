@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "1.2b";
+const VERSION = "1.6";
 
 const BASELINE = {
   overall: { score: 108, total: 200, pct: 54 },
@@ -13,11 +13,31 @@ const BASELINE = {
   ],
 };
 
+// Legacy flat keys — used only for one-time migration of existing data
 const STORAGE_KEYS = {
   leitnerBoxes: "11plus:leitner-boxes-v1",
   sessionHistory: "11plus:session-history-v1",
   streakData: "11plus:streak-data-v1",
 };
+
+// ─── PROFILES (v1.6) ─────────────────────────────────────────────────────────
+const PROFILES_KEY      = "11plus:profiles";
+const ACTIVE_PROFILE_KEY = "11plus:active-profile";
+
+const PROFILE_AVATARS = ["🦁","🐯","🦊","🦅","🐬","🦋","🦄","🐉","⭐","🌟","🎯","🚀"];
+const PROFILE_COLOURS = ["#e85d26","#2355a0","#6b3fa0","#2d7a52","#c9963a","#c0392b","#16a085","#8e44ad"];
+
+function makeProfileId() {
+  return "u" + Math.random().toString(36).slice(2, 9);
+}
+
+function getUserStorageKeys(userId) {
+  return {
+    leitnerBoxes:   `11plus:user:${userId}:leitner-boxes-v1`,
+    sessionHistory: `11plus:user:${userId}:session-history-v1`,
+    streakData:     `11plus:user:${userId}:streak-data-v1`,
+  };
+}
 
 // ─── VOCAB BANK v1.1 — schema includes simpleDefinition ──────────────────────
 const VOCAB_BANK = [
@@ -1840,6 +1860,43 @@ const css = `
   .ai-pill.on .ai-dot { background:var(--green); }
   .ai-pill.off .ai-dot { background:rgba(255,255,255,0.2); }
 
+  .profile-pill { display:flex; align-items:center; gap:5px; font-size:11px; padding:3px 9px; border-radius:10px; cursor:pointer; font-weight:600; background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.85); transition:background 0.15s; max-width:100px; }
+  .profile-pill:hover { background:rgba(255,255,255,0.15); }
+  .profile-pill .p-avatar { font-size:14px; line-height:1; }
+  .profile-pill .p-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  .profile-overlay { position:fixed; inset:0; background:rgba(26,26,46,0.55); z-index:500; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .profile-panel { background:white; border-radius:16px; padding:24px; width:100%; max-width:380px; box-shadow:0 8px 40px rgba(26,26,46,0.22); }
+  .profile-panel-title { font-family:'Fraunces',serif; font-size:20px; font-weight:700; margin-bottom:4px; }
+  .profile-panel-sub { font-size:12px; color:var(--ink-soft); margin-bottom:18px; }
+  .profile-list { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+  .profile-card { display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:10px; border:2px solid var(--border); cursor:pointer; transition:all 0.15s; }
+  .profile-card:hover { border-color:var(--accent); background:var(--accent-soft); }
+  .profile-card.active { border-color:var(--accent); background:var(--accent-soft); }
+  .profile-card .pc-avatar { font-size:22px; line-height:1; }
+  .profile-card .pc-name { font-weight:600; font-size:14px; }
+  .profile-card .pc-stats { font-size:11px; color:var(--ink-soft); }
+  .profile-card .pc-check { margin-left:auto; color:var(--accent); font-size:16px; }
+  .add-profile-btn { width:100%; padding:10px; border:2px dashed var(--border); border-radius:10px; background:transparent; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; color:var(--ink-soft); cursor:pointer; transition:all 0.15s; }
+  .add-profile-btn:hover { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+  .profile-close { float:right; background:transparent; border:none; font-size:18px; cursor:pointer; color:var(--ink-soft); line-height:1; padding:2px 4px; }
+  .profile-close:hover { color:var(--ink); }
+
+  .creator-panel { }
+  .creator-label { font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.4px; }
+  .creator-input { width:100%; padding:10px 12px; border:2px solid var(--border); border-radius:8px; font-family:'DM Sans',sans-serif; font-size:14px; margin-bottom:14px; outline:none; }
+  .creator-input:focus { border-color:var(--accent); }
+  .avatar-grid { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:14px; }
+  .avatar-opt { width:36px; height:36px; border-radius:8px; border:2px solid var(--border); background:var(--cream); font-size:18px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all 0.12s; }
+  .avatar-opt.sel { border-color:var(--accent); background:var(--accent-soft); }
+  .colour-grid { display:flex; gap:7px; margin-bottom:18px; }
+  .colour-opt { width:26px; height:26px; border-radius:50%; border:3px solid transparent; cursor:pointer; transition:border-color 0.12s; }
+  .colour-opt.sel { border-color:var(--ink); }
+  .creator-actions { display:flex; gap:8px; }
+  .creator-save { flex:1; padding:10px; background:var(--accent); color:white; border:none; border-radius:8px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:700; cursor:pointer; }
+  .creator-save:disabled { opacity:0.4; cursor:not-allowed; }
+  .creator-cancel { padding:10px 14px; background:var(--cream); color:var(--ink); border:none; border-radius:8px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
+
   .nav { display:flex; border-bottom:1px solid var(--border); background:white; padding:0 18px; overflow-x:auto; }
   .nav-btn { padding:12px 16px; border:none; background:transparent; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; color:var(--ink-soft); cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; transition:all 0.15s; }
   .nav-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
@@ -2572,6 +2629,90 @@ STUDENT DATA: Baseline 54% (target 85%). Vocab 39% — P1 Critical. Maths 60% (7
   );
 }
 
+// ─── PROFILE CREATOR ─────────────────────────────────────────────────────────
+function ProfileCreator({ onSave, onCancel }) {
+  const [name, setName] = useState("");
+  const [avatar, setAvatar] = useState(PROFILE_AVATARS[0]);
+  const [colour, setColour] = useState(PROFILE_COLOURS[0]);
+  return (
+    <div className="creator-panel">
+      <div className="creator-label">Name</div>
+      <input
+        className="creator-input"
+        placeholder="Enter a name…"
+        maxLength={20}
+        value={name}
+        onChange={e => setName(e.target.value)}
+        autoFocus
+      />
+      <div className="creator-label">Avatar</div>
+      <div className="avatar-grid">
+        {PROFILE_AVATARS.map(a => (
+          <div key={a} className={`avatar-opt${avatar === a ? " sel" : ""}`} onClick={() => setAvatar(a)}>{a}</div>
+        ))}
+      </div>
+      <div className="creator-label">Colour</div>
+      <div className="colour-grid">
+        {PROFILE_COLOURS.map(c => (
+          <div key={c} className={`colour-opt${colour === c ? " sel" : ""}`} style={{ background: c }} onClick={() => setColour(c)} />
+        ))}
+      </div>
+      <div className="creator-actions">
+        <button className="creator-cancel" onClick={onCancel}>Cancel</button>
+        <button
+          className="creator-save"
+          disabled={!name.trim()}
+          onClick={() => onSave({ id: makeProfileId(), name: name.trim(), avatar, colour, createdAt: Date.now() })}
+        >Create profile →</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── PROFILE SELECTOR ────────────────────────────────────────────────────────
+function ProfileSelector({ profiles, activeProfileId, leitnerBoxes, onSelect, onCreateProfile, onClose }) {
+  const [creating, setCreating] = useState(false);
+  const handleSave = (newProfile) => {
+    onCreateProfile(newProfile);
+    setCreating(false);
+  };
+  return (
+    <div className="profile-overlay" onClick={e => e.target === e.currentTarget && onClose && onClose()}>
+      <div className="profile-panel">
+        <button className="profile-close" onClick={onClose}>✕</button>
+        <div className="profile-panel-title">{creating ? "New Profile" : "Profiles"}</div>
+        <div className="profile-panel-sub">
+          {creating ? "Who's this for?" : "Pick a profile to continue"}
+        </div>
+        {creating ? (
+          <ProfileCreator onSave={handleSave} onCancel={() => setCreating(false)} />
+        ) : (
+          <>
+            <div className="profile-list">
+              {profiles.map(p => {
+                const boxes = p.id === activeProfileId ? leitnerBoxes : {};
+                const mastered = VOCAB_BANK.filter(w => isMastered(w, boxes[w.word])).length;
+                const isActive = p.id === activeProfileId;
+                return (
+                  <div key={p.id} className={`profile-card${isActive ? " active" : ""}`} onClick={() => onSelect(p)}>
+                    <div className="pc-avatar">{p.avatar}</div>
+                    <div>
+                      <div className="pc-name">{p.name}</div>
+                      <div className="pc-stats">{isActive ? `${mastered} words mastered` : "Tap to switch"}</div>
+                    </div>
+                    {isActive && <div className="pc-check">✓</div>}
+                  </div>
+                );
+              })}
+            </div>
+            <button className="add-profile-btn" onClick={() => setCreating(true)}>+ Add profile</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [mode, setMode] = useState("student");
@@ -2583,12 +2724,51 @@ export default function App() {
   const [practising, setPractising] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
+  // v1.6 profiles
+  const [profile, setProfile] = useState(null);
+  const [profiles, setProfiles] = useState([]);
+  const [showProfileSelect, setShowProfileSelect] = useState(false);
+
+  // Load user data for a given profile
+  const loadUserData = async (prof) => {
+    const keys = getUserStorageKeys(prof.id);
+    const boxes   = await storageGet(keys.leitnerBoxes)   || {};
+    const history = await storageGet(keys.sessionHistory) || [];
+    const streakData = await storageGet(keys.streakData)  || { count: 0, lastDate: null };
+    setLeitnerBoxes(boxes);
+    setSessionHistory(history);
+    setStreak(streakData);
+  };
+
   useEffect(() => {
     (async () => {
-      const boxes = await storageGet(STORAGE_KEYS.leitnerBoxes) || {};
-      const history = await storageGet(STORAGE_KEYS.sessionHistory) || [];
-      const streakData = await storageGet(STORAGE_KEYS.streakData) || { count: 0, lastDate: null };
-      setLeitnerBoxes(boxes); setSessionHistory(history); setStreak(streakData); setLoaded(true);
+      // Load or initialise profiles
+      let profs = await storageGet(PROFILES_KEY) || [];
+      let activeId = await storageGet(ACTIVE_PROFILE_KEY);
+
+      if (profs.length === 0) {
+        // First launch — migrate any existing flat-key data to a default profile
+        const defaultId = makeProfileId();
+        const defaultProfile = { id: defaultId, name: "My Profile", avatar: "🦁", colour: "#e85d26", createdAt: Date.now() };
+        // Migrate existing data (if any)
+        const existingBoxes   = await storageGet(STORAGE_KEYS.leitnerBoxes);
+        const existingHistory = await storageGet(STORAGE_KEYS.sessionHistory);
+        const existingStreak  = await storageGet(STORAGE_KEYS.streakData);
+        const userKeys = getUserStorageKeys(defaultId);
+        if (existingBoxes)   await storageSet(userKeys.leitnerBoxes,   existingBoxes);
+        if (existingHistory) await storageSet(userKeys.sessionHistory, existingHistory);
+        if (existingStreak)  await storageSet(userKeys.streakData,     existingStreak);
+        profs = [defaultProfile];
+        activeId = defaultId;
+        await storageSet(PROFILES_KEY, profs);
+        await storageSet(ACTIVE_PROFILE_KEY, activeId);
+      }
+
+      const activeProfile = profs.find(p => p.id === activeId) || profs[0];
+      setProfiles(profs);
+      setProfile(activeProfile);
+      await loadUserData(activeProfile);
+      setLoaded(true);
     })();
   }, []);
 
@@ -2612,10 +2792,31 @@ export default function App() {
     const newStreak = { count: streak.lastDate === yesterday ? streak.count + 1 : streak.lastDate === today ? streak.count : 1, lastDate: today };
     const newHistory = [...sessionHistory, { date: Date.now(), correct, total: results.length, aidLog }];
     setLeitnerBoxes(newBoxes); setStreak(newStreak); setSessionHistory(newHistory);
-    await storageSet(STORAGE_KEYS.leitnerBoxes, newBoxes);
-    await storageSet(STORAGE_KEYS.streakData, newStreak);
-    await storageSet(STORAGE_KEYS.sessionHistory, newHistory);
+    const userKeys = getUserStorageKeys(profile.id);
+    await storageSet(userKeys.leitnerBoxes,   newBoxes);
+    await storageSet(userKeys.streakData,     newStreak);
+    await storageSet(userKeys.sessionHistory, newHistory);
     setPractising(false);
+  };
+
+  const handleSwitchProfile = async (newProfile) => {
+    setLoaded(false);
+    setLeitnerBoxes({});
+    setSessionHistory([]);
+    setStreak({ count: 0, lastDate: null });
+    setPractising(false);
+    setProfile(newProfile);
+    await storageSet(ACTIVE_PROFILE_KEY, newProfile.id);
+    await loadUserData(newProfile);
+    setLoaded(true);
+    setShowProfileSelect(false);
+  };
+
+  const handleCreateProfile = async (newProfile) => {
+    const updatedProfiles = [...profiles, newProfile];
+    setProfiles(updatedProfiles);
+    await storageSet(PROFILES_KEY, updatedProfiles);
+    await handleSwitchProfile(newProfile);
   };
 
   const dueCount = loaded ? getDueWords(leitnerBoxes).length : 0;
@@ -2633,12 +2834,29 @@ export default function App() {
           <div className={`ai-pill ${aiEnabled ? "on" : "off"}`} onClick={() => setAiEnabled(e => !e)}>
             <div className="ai-dot" /> AI {aiEnabled ? "on" : "off"}
           </div>
+          {profile && (
+            <div className="profile-pill" onClick={() => setShowProfileSelect(true)} title="Switch profile">
+              <span className="p-avatar">{profile.avatar}</span>
+              <span className="p-name">{profile.name}</span>
+            </div>
+          )}
           <div className="mode-toggle">
             <button className={`mode-btn ${mode === "student" ? "active" : ""}`} onClick={() => setMode("student")}>Student</button>
             <button className={`mode-btn ${mode === "coach" ? "active" : ""}`} onClick={() => setMode("coach")}>Coach</button>
           </div>
         </div>
       </div>
+
+      {showProfileSelect && (
+        <ProfileSelector
+          profiles={profiles}
+          activeProfileId={profile?.id}
+          leitnerBoxes={leitnerBoxes}
+          onSelect={handleSwitchProfile}
+          onCreateProfile={handleCreateProfile}
+          onClose={() => setShowProfileSelect(false)}
+        />
+      )}
 
       <div className="nav">
         {(mode === "student" ? sTabs : cTabs).map(t => (
