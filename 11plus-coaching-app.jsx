@@ -1872,7 +1872,7 @@ function QuestionAids({ word, aidLog = {}, onAidUsed }) {
       <div className="q-aids">
         <button className={`q-aid-btn${aidLog.speak ? " used" : ""}`} onClick={handleSpeak} title="Hear the word">🔊 Pronounce</button>
         <button className={`q-aid-btn${aidLog.def ? " used" : ""}`} onClick={handleDef} title="See definition">📖 Definition</button>
-        <button className={`q-aid-btn${aidLog.simple ? " used" : ""}`} onClick={handleSimple} title="Simple explanation">💡 Simple</button>
+        <button className={`q-aid-btn${aidLog.simple ? " used" : ""}`} onClick={handleSimple} title="See definition first" disabled={!showDef} style={!showDef ? {opacity:0.35,cursor:"not-allowed"} : {}}>💡 Simple</button>
       </div>
       {showDef && data && <div className="q-reveal">{data.definition}</div>}
       {showSimple && data && <div className="q-reveal simple">💡 {data.simpleDefinition}</div>}
@@ -1912,7 +1912,7 @@ function OptionCard({ opt, selected, correct, answered, onAnswer, onAidUsed, aid
         <div className="opt-aids">
           <button className={`aid-btn${aidLog.speak ? " used" : ""}`} onClick={handleSpeak} title="Hear pronunciation">🔊 Pronounce</button>
           <button className={`aid-btn${aidLog.def ? " used" : ""}`} onClick={handleDef} title="Definition">📖 Definition</button>
-          <button className={`aid-btn${aidLog.simple ? " used" : ""}`} onClick={handleSimple} title="Simple explanation">💡 Simple</button>
+          <button className={`aid-btn${aidLog.simple ? " used" : ""}`} onClick={handleSimple} title="See definition first" disabled={!showDef} style={!showDef ? {opacity:0.35,cursor:"not-allowed"} : {}}>💡 Simple</button>
         </div>
       </div>
       {showDef && <div className="opt-reveal">{data ? data.definition : "Definition not available for this word."}</div>}
