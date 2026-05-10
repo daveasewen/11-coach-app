@@ -2629,11 +2629,16 @@ STUDENT DATA: Baseline 54% (target 85%). Vocab 39% — P1 Critical. Maths 60% (7
   );
 }
 
+const YEAR_GROUPS = ["Year 3", "Year 4", "Year 5", "Year 6", "Year 7"];
+
 // ─── PROFILE CREATOR ─────────────────────────────────────────────────────────
 function ProfileCreator({ onSave, onCancel }) {
   const [name, setName] = useState("");
+  const [age, setAge] = useState("");
+  const [yearGroup, setYearGroup] = useState("");
   const [avatar, setAvatar] = useState(PROFILE_AVATARS[0]);
   const [colour, setColour] = useState(PROFILE_COLOURS[0]);
+  const canSave = name.trim() && age && yearGroup;
   return (
     <div className="creator-panel">
       <div className="creator-label">Name</div>
@@ -2645,6 +2650,33 @@ function ProfileCreator({ onSave, onCancel }) {
         onChange={e => setName(e.target.value)}
         autoFocus
       />
+      <div style={{ display:"flex", gap:8, marginBottom:0 }}>
+        <div style={{ flex:1 }}>
+          <div className="creator-label">Age</div>
+          <input
+            className="creator-input"
+            type="number"
+            min={5}
+            max={16}
+            placeholder="e.g. 9"
+            value={age}
+            onChange={e => setAge(e.target.value)}
+            style={{ marginBottom:14 }}
+          />
+        </div>
+        <div style={{ flex:2 }}>
+          <div className="creator-label">Year group</div>
+          <select
+            className="creator-input"
+            value={yearGroup}
+            onChange={e => setYearGroup(e.target.value)}
+            style={{ marginBottom:14, cursor:"pointer" }}
+          >
+            <option value="">Select…</option>
+            {YEAR_GROUPS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+      </div>
       <div className="creator-label">Avatar</div>
       <div className="avatar-grid">
         {PROFILE_AVATARS.map(a => (
@@ -2661,8 +2693,8 @@ function ProfileCreator({ onSave, onCancel }) {
         <button className="creator-cancel" onClick={onCancel}>Cancel</button>
         <button
           className="creator-save"
-          disabled={!name.trim()}
-          onClick={() => onSave({ id: makeProfileId(), name: name.trim(), avatar, colour, createdAt: Date.now() })}
+          disabled={!canSave}
+          onClick={() => onSave({ id: makeProfileId(), name: name.trim(), age: Number(age), yearGroup, avatar, colour, createdAt: Date.now() })}
         >Create profile →</button>
       </div>
     </div>
@@ -2698,7 +2730,9 @@ function ProfileSelector({ profiles, activeProfileId, leitnerBoxes, onSelect, on
                     <div className="pc-avatar">{p.avatar}</div>
                     <div>
                       <div className="pc-name">{p.name}</div>
-                      <div className="pc-stats">{isActive ? `${mastered} words mastered` : "Tap to switch"}</div>
+                      <div className="pc-stats">
+                        {p.yearGroup ? `${p.yearGroup}${p.age ? `, age ${p.age}` : ""} · ` : ""}{isActive ? `${mastered} mastered` : "Tap to switch"}
+                      </div>
                     </div>
                     {isActive && <div className="pc-check">✓</div>}
                   </div>
@@ -2749,7 +2783,7 @@ export default function App() {
       if (profs.length === 0) {
         // First launch — migrate any existing flat-key data to a default profile
         const defaultId = makeProfileId();
-        const defaultProfile = { id: defaultId, name: "My Profile", avatar: "🦁", colour: "#e85d26", createdAt: Date.now() };
+        const defaultProfile = { id: defaultId, name: "My Profile", avatar: "🦁", colour: "#e85d26", age: null, yearGroup: null, createdAt: Date.now() };
         // Migrate existing data (if any)
         const existingBoxes   = await storageGet(STORAGE_KEYS.leitnerBoxes);
         const existingHistory = await storageGet(STORAGE_KEYS.sessionHistory);
@@ -2837,7 +2871,7 @@ export default function App() {
           {profile && (
             <div className="profile-pill" onClick={() => setShowProfileSelect(true)} title="Switch profile">
               <span className="p-avatar">{profile.avatar}</span>
-              <span className="p-name">{profile.name}</span>
+              <span className="p-name">{profile.name}{profile.yearGroup ? ` · ${profile.yearGroup}` : ""}</span>
             </div>
           )}
           <div className="mode-toggle">

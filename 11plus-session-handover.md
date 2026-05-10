@@ -117,7 +117,15 @@ An AI-enhanced coaching and testing tool for Dave's son (age 10–11) preparing 
 - **QPM on completion screen:** Questions-per-minute calculated from `sessionLog.timeMs` totals, displayed alongside score/correct/review.
 - VERSION bumped to `"1.2b"`
 
-### v1.5c (current — JSX updated, rebuild needed before next Cowork artifact deploy)
+### v1.6 (current — built, Cowork artifact live ✅)
+- **User profiles:** Profile selector accessible from a pill in the header (avatar + name). Click to switch or create profiles.
+- **Per-user storage prefix:** All Leitner/history/streak data now stored under `11plus:user:<id>:*` keys. Profiles list in `11plus:profiles`. Active profile in `11plus:active-profile`.
+- **Profile creation:** Name input + avatar picker (12 emoji options) + colour picker (8 colours).
+- **First-launch migration:** On first load with no profiles, existing flat-key data (if any) is automatically migrated to a default "My Profile". No data loss.
+- **handleSwitchProfile:** Cleanly resets all user state and loads the new profile's data without a page refresh.
+- **VERSION bumped to 1.6**
+
+### v1.5c (built, Cowork artifact live ✅)
 - **Antonym quality pass:** perplexed, bewildered, dilapidated, gaunt, derelict all fixed. "composed" removed from cognitive confusion words; "certain/enlightened/clear-headed/lucid/sturdy/sound/intact" substituted.
 - **💡 Simple Definition gated behind 📖 Definition:** on both option cards and question word header. Button sits at 35% opacity and is disabled until Definition has been opened. Forces student to engage with the proper definition first.
 - **DISTRACTOR_DICT expanded:** 804 → 956 entries. 163 new entries covering all words referenced 3+ times as synonyms/antonyms. Zero high-frequency distractor words now missing definitions.
@@ -320,31 +328,19 @@ git commit -m "vX.Y — description"
 
 ## 9. Backlog
 
-### v1.2c — ✅ SHIPPED (Cowork artifact live)
+### v1.2c — ✅ SHIPPED
+### v1.3 — ✅ SHIPPED (Timer + Dashboard)
+### v1.4 — ✅ SHIPPED (Content quality + 648-word bank)
+### v1.5 — ✅ SHIPPED (Etymology/mnemonic ROOT_TIPS layer)
+### v1.5b — ✅ SHIPPED (Fill-blank sentence overrides)
+### v1.5c — ✅ SHIPPED (Antonym fixes, 💡 gate, DISTRACTOR_DICT 956 entries)
+### v1.6 — ✅ SHIPPED (User profiles)
 
-- Cowork artifact built and deployed (`11plus-coach`)
-- `callAI()` abstraction: Cowork → standalone API-key fallback
-- AI coaching unbroken: `callAI` now defined in JSX (was undefined → silent failure → no coaching)
-- CoachAdvisor fixed: `window.claude.complete` → `callAI`
-- Coaching prompts: completion-style with `\nSentence:` cue, max 15 words student / 2 sentences coach
+### v1.7 — Next priority
 
-### v1.3 — Next priority
-
-#### Timer enhancements
-- 30-second rule mode: flag questions >30s with a red warning on the result card
-- Timing metrics card in Coach dashboard (avg time per question, slow-question list)
-- Per-format speed breakdown (are definition questions slower than synonym ones?)
-
-#### Vocab dashboard improvements
-- Format breakdown per word — which of the 4 formats passed vs pending
-- "Needs most time" word list using `sessionLog.timeMs` data
-
-### UI note held from v1.2.0
-- Format badge: make it even more prominent / consider additional visual treatment so there are no silly mistakes reading the question type
-
-### Dashboard updates needed
-- Format breakdown per word — which formats passed, which pending
-- Useful coach data now mastery is multi-format
+- **Age band expansion:** difficulty 1–2 words for ages 8–9. The ~85 Exam Ninja gap words filtered as "too simple for 11+" are a ready starting point.
+- **Difficulty filter:** small code change — filter session queue to difficulty band matching the child's age/level. Schema already supports it (`difficulty` field on every word).
+- See roadmap v1.7 for full spec.
 
 ### Future / not yet built
 - Maths, comprehension, shuffled sentences question banks
@@ -375,10 +371,9 @@ git commit -m "vX.Y — description"
 
 ---
 
-*Handover version: 1.5c*
-*App version: v1.5c (JSX updated — rebuild + Cowork artifact update needed)*
-*Next session: v1.6 — User profiles (before any second user touches the app — mixing Leitner data would silently corrupt both). Then v1.7 — Age band expansion (difficulty 1–2 words for age 8–9).*
+*Handover version: 1.6*
+*App version: v1.6 — built and Cowork artifact live ✅*
+*Next session: v1.7 — Age band expansion (difficulty 1–2 words for age 8–9 siblings/earlier prep). Then v1.8 — New question domains (maths, comprehension).*
 *Last updated: May 2026*
-*Rebuild needed: antonym fixes + 💡 gate + 163 new DISTRACTOR_DICT entries are in JSX but not yet in app-min.js or Cowork artifact. Run full build pipeline then update artifact.*
-*Progress note: Dave's son's Leitner data IS being saved in localStorage. It's real, not a prototype. Device-local only — no cloud sync.*
-*Profiles note: storage keys are currently flat (11plus:vocab-mastered etc). Adding profiles = prefix per user. Must do before second user. See roadmap v1.6.*
+*Progress note: Dave's son's Leitner data has been migrated to the per-user prefixed storage keys. Device-local only — no cloud sync.*
+*Profiles note: Storage keys are now per-user (`11plus:user:<id>:*`). Profile list in `11plus:profiles`. A second user can be added safely via the profile pill in the header.*
