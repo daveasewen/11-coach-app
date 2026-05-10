@@ -43,6 +43,22 @@ if (appJs.includes('import{') || appJs.includes('import {')) {
 const vMatch = appJs.match(/VERSION\s*=\s*["']([^"']+)["']/);
 const version = vMatch ? vMatch[1] : "unknown";
 
+// localStorage polyfill for window.storage
+// The JSX uses window.storage.get/set (old Claude.ai artifact API).
+// This polyfill ensures data always lands in localStorage regardless of environment,
+// so progress survives artifact updates. Cowork's own window.storage (if present) is
+// overridden — localStorage is the source of truth.
+const storagePolyfill = `
+window.storage = {
+  get: function(key) {
+    try { var v = localStorage.getItem(key); return v !== null ? { value: v } : null; } catch(e) { return null; }
+  },
+  set: function(key, value) {
+    try { localStorage.setItem(key, value); } catch(e) {}
+  }
+};
+`;
+
 // Banner + polling Cowork detection (never shows in Cowork; shows in standalone after 2s)
 const bannerJs = `
 // Show API key banner only in standalone mode (no Cowork environment)
@@ -88,6 +104,7 @@ const html = `<!DOCTYPE html>
 
 <div id="root"></div>
 
+<script>${storagePolyfill}</script>
 <script>${bannerJs}</script>
 <script>${reactJs}</script>
 <script>${reactdomJs}</script>
@@ -109,7 +126,7 @@ console.log(`✓ 11plus-coach.html written — ${kb} KB (v${version})`);
 console.log(`✓ Backup: 11plus-coach-${version}.html`);
 console.log("");
 console.log("Verification:");
-console.log(`  Script tags:    ${(html.match(/<script/g) || []).length} (expected 5)`);
+console.log(`  Script tags:    ${(html.match(/<script/g) || []).length} (expected 6)`);
 console.log(`  import{{:        ${(html.match(/import\{/g) || []).length} (expected 0)`);
 console.log(`  createRoot:     ${(html.match(/createRoot/g) || []).length} (expected 2)`);
 console.log("");

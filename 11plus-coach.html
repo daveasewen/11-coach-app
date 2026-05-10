@@ -21,6 +21,16 @@
 <div id="root"></div>
 
 <script>
+window.storage = {
+  get: function(key) {
+    try { var v = localStorage.getItem(key); return v !== null ? { value: v } : null; } catch(e) { return null; }
+  },
+  set: function(key, value) {
+    try { localStorage.setItem(key, value); } catch(e) {}
+  }
+};
+</script>
+<script>
 // Show API key banner only in standalone mode (no Cowork environment)
 function showBannerIfNeeded() {
   if (localStorage.getItem('11plus:api-key')) return;

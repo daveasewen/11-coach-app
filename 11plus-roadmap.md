@@ -182,12 +182,14 @@ NVR deprioritised — review August 2026 if other domains on track.
 
 - Standalone hosting (Netlify/GitHub Pages)
 - Exam region config (generalise beyond Kent/Bexley)
+- **Backend / database** — localStorage is the current storage layer (survives artifact updates, device-local). As the product grows (multiple devices, tutors accessing student data, multiple families), a proper backend will be needed. Likely a simple hosted database (Supabase or similar) with per-user auth. Decision point: when a second device needs to access the same progress data.
 - Child profiles + initial assessment
 - Multi-user support
 - Tutor collaboration workflow
 - Difficulty level progression
 - Coaching tone calibration (untested with actual child)
 - Question bank authoring UI
+- Data export / backup (JSON download of all progress data as a safety net)
 
 ---
 
