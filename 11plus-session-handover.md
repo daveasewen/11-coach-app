@@ -256,27 +256,59 @@ leitnerBoxes[word] = {
 
 | File | Location | Status |
 |---|---|---|
-| `11plus-coaching-app.jsx` | Project root | ✅ v1.2c source of truth |
-| `11plus-coach.html` | Project root | ✅ Built output / Cowork artifact content (~388KB) |
-| `11plus-session-handover.md` | Project root | ✅ This file — technical brief |
-| `11plus-roadmap.md` | Project root | ✅ **Living product roadmap — read this for backlog, issues, decisions** |
-| `11plus-roadmap.html` | Project root | ✅ Styled HTML version of roadmap (GTB design) |
-| `11plus-coaching-context.md` | Project root | ✅ Full research doc (read-only reference) |
-| `build.js` | Claude outputs folder | ✅ Build script — swaps callAI + storage, injects ROOT_TIPS + FILL_BLANK_EXAMPLES |
-| `assemble.js` | Claude outputs folder | ✅ Assembles React + compiled app into final HTML |
-| `root-tips.js` | Claude outputs folder | ✅ ~70 Latin/Greek root hooks + mnemonics, injected as ROOT_TIPS at build time |
-| `fill-blank-examples.js` | Claude outputs folder | ✅ ~300 fill-blank sentences, injected as FILL_BLANK_EXAMPLES at build time |
+| `11plus-coaching-app.jsx` | Project root | ✅ Source of truth — edit this, rebuild to deploy |
+| `11plus-coach.html` | Project root | ✅ Built output / Cowork artifact content (~527KB) |
+| `11plus-coach-<VERSION>.html` | Project root | ✅ Versioned backup written by assemble.js on each build |
+| `build.js` | **Project root** | ✅ Injects callAI + ROOT_TIPS + FILL_BLANK_EXAMPLES → app-modified.jsx |
+| `assemble.js` | **Project root** | ✅ Assembles clean single-copy HTML — always overwrites, never appends |
+| `react.js` | Project root | ✅ React 18 UMD production (permanent — do not delete) |
+| `reactdom.js` | Project root | ✅ ReactDOM 18 UMD production (permanent — do not delete) |
+| `app-min.js` | Project root | ✅ Latest compiled + minified app (build artefact) |
+| `root-tips.js` | Project root | ⚠️ ~70 Latin/Greek root hooks — recreate from last HTML if missing |
+| `fill-blank-examples.js` | Project root | ⚠️ ~300 fill-blank sentences — recreate from last HTML if missing |
+| `11plus-session-handover.md` | Project root | ✅ This file |
+| `11plus-roadmap.md` | Project root | ✅ Living product roadmap |
+| `11plus-coaching-context.md` | Project root | ✅ Full research doc (read-only) |
+
+⚠️ **Build scripts now live permanently in the project root — NOT in the Claude outputs folder.** The outputs folder is volatile (wiped between sessions). Never store anything important there.
 
 **The JSX file is the source of truth. Edit JSX → rebuild → update Cowork artifact.**
 
-Build pipeline (run from Claude outputs folder):
+### Build pipeline (run from project root)
 ```
 node build.js
-./node_modules/.bin/babel --presets @babel/preset-react --plugins @babel/plugin-proposal-optional-chaining,@babel/plugin-proposal-nullish-coalescing-operator app-modified.jsx -o app-compiled.js
+./node_modules/.bin/babel --presets @babel/preset-react \
+  --plugins @babel/plugin-proposal-optional-chaining,@babel/plugin-proposal-nullish-coalescing-operator \
+  app-modified.jsx -o app-compiled.js
 ./node_modules/.bin/terser app-compiled.js -o app-min.js --compress --mangle
-node assemble.js → 11plus-coach.html
+node assemble.js
 ```
-⚠️ Use `./node_modules/.bin/babel` not `npx babel` — npx resolves to Babel 6 from cache and breaks on optional chaining (`?.`) and nullish coalescing (`??`). If node_modules is missing, run: `npm install @babel/cli @babel/core @babel/preset-react @babel/plugin-proposal-optional-chaining @babel/plugin-proposal-nullish-coalescing-operator`
+
+If node_modules is missing:
+```
+npm install @babel/cli @babel/core @babel/preset-react @babel/plugin-proposal-optional-chaining @babel/plugin-proposal-nullish-coalescing-operator terser
+```
+
+⚠️ Use `./node_modules/.bin/babel` not `npx babel` — npx resolves to Babel 6 from cache and breaks on `?.` and `??`.
+
+### What assemble.js guarantees
+- Always writes a fresh file (never appends) — previous corruption was an appending bug, now fixed
+- Fixes the ES module import (`import{...}from"react"` → `const{...}=React`) so the script runs in a plain `<script>` tag
+- Writes `11plus-coach-<VERSION>.html` as a versioned backup alongside the main file
+- Prints a verification summary (script tag count, import count, createRoot count)
+
+### Versioning / rollback
+Git is initialised in the project folder. To roll back the JSX to a previous state:
+```
+git log --oneline          # find the commit
+git checkout <hash> -- 11plus-coaching-app.jsx
+node build.js && [babel] && [terser] && node assemble.js
+```
+To commit after a successful build:
+```
+git add 11plus-coaching-app.jsx app-min.js 11plus-coach.html
+git commit -m "vX.Y — description"
+```
 
 ---
 

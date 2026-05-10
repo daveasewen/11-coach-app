@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>11+ Coach — Product Roadmap</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --red:    #DB0011;
+  --black:  #000000;
+  --white:  #FFFFFF;
+  --grey-1: #F3F3F3;
+  --grey-2: #EDEDED;
+  --grey-3: #D7D8D6;
+  --grey-6: #767676;
+  --grey-7: #545454;
+  --grey-8: #333333;
+
+  --s1: 0.5rem;
+  --s2: 1rem;
+  --s3: 1.5rem;
+  --s4: 2rem;
+  --s5: 3rem;
+  --s6: 4rem;
+  --s7: 6rem;
+  --max-width: 1100px;
+  --gutter: 2rem;
+
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--black);
+  background: var(--white);
+  -webkit-font-smoothing: antialiased;
+}
+
+body { font-size: 16px; line-height: 1.75; }
+
+/* Progress bar */
+#progress-bar {
+  position: fixed;
+  top: 0; left: 0;
+  height: 2px;
+  background: var(--red);
+  width: 0%;
+  z-index: 1000;
+  transition: width 0.1s linear;
+}
+
+/* Nav */
+nav {
+  position: sticky;
+  top: 0;
+  background: var(--white);
+  border-bottom: 1px solid var(--grey-2);
+  z-index: 100;
+  height: 54px;
+  display: flex;
+  align-items: center;
+}
+.nav-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nav-title { font-size: 0.75rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--black); }
+.nav-links { display: flex; gap: var(--s4); list-style: none; }
+.nav-links a { font-size: 0.875rem; color: var(--grey-6); text-decoration: none; letter-spacing: 0.04em; transition: color 0.15s; }
+.nav-links a:hover { color: var(--black); }
+.nav-meta { font-size: 0.75rem; color: var(--grey-6); }
+
+/* Layout */
+.container { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--gutter); }
+section { padding: var(--s7) 0; border-bottom: 1px solid var(--grey-2); }
+section:last-child { border-bottom: none; }
+
+/* Label */
+.label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--red);
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-bottom: var(--s4);
+}
+.label::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 1px;
+  background: var(--red);
+}
+
+/* Hero */
+.hero { padding: var(--s7) 0 var(--s6); border-bottom: 1px solid var(--grey-2); }
+.hero-grid {
+  display: grid;
+  grid-template-columns: 3fr 1px 4fr;
+  gap: var(--s6);
+  align-items: start;
+}
+.hero-divider { background: var(--grey-2); align-self: stretch; min-height: 120px; }
+.hero-title { font-size: 2.6875rem; font-weight: 700; line-height: 1.1; letter-spacing: -0.01em; }
+.hero-body { font-size: 1rem; line-height: 1.75; color: var(--grey-8); }
+.hero-body p + p { margin-top: var(--s2); }
+.meta-row { display: flex; gap: var(--s4); margin-top: var(--s5); flex-wrap: wrap; }
+.meta-item { font-size: 0.75rem; color: var(--grey-6); letter-spacing: 0.04em; }
+.meta-item strong { color: var(--black); font-weight: 500; }
+
+/* Stat strip */
+.stat-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--grey-2); margin-top: var(--s5); }
+.stat-cell { background: var(--white); padding: var(--s3) var(--s4); }
+.stat-num { font-size: 2.6875rem; font-weight: 200; line-height: 1; margin-bottom: var(--s1); }
+.stat-label { font-size: 0.75rem; color: var(--grey-6); letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* Dimension section (1/3 : 2/3) */
+.dimension { padding: var(--s7) 0; border-bottom: 1px solid var(--grey-2); }
+.dimension-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: var(--s6);
+  align-items: start;
+}
+.dimension-left { position: sticky; top: 70px; }
+.dimension-index { font-size: 5.25rem; font-weight: 200; line-height: 1; color: var(--grey-2); margin-bottom: var(--s2); }
+.dimension-title { font-size: 1.1875rem; font-weight: 700; line-height: 1.2; margin-bottom: var(--s2); }
+.dimension-desc { font-size: 0.875rem; color: var(--grey-7); line-height: 1.6; }
+
+/* Version blocks */
+.version-block + .version-block { margin-top: var(--s5); padding-top: var(--s5); border-top: 1px solid var(--grey-2); }
+.version-head { display: flex; align-items: baseline; gap: var(--s2); margin-bottom: var(--s3); }
+.version-tag { font-size: 0.875rem; font-weight: 700; letter-spacing: 0.04em; }
+.version-goal { font-size: 0.875rem; color: var(--grey-7); }
+.version-status { font-size: 0.75rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border: 1px solid var(--grey-3); color: var(--grey-7); }
+.version-status.shipped { color: #1a7a3c; border-color: #1a7a3c; }
+.version-status.next { color: var(--red); border-color: var(--red); }
+
+/* Table */
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; margin-top: var(--s3); }
+.data-table th { text-align: left; font-size: 0.75rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--grey-6); padding: var(--s1) var(--s2) var(--s1) 0; border-bottom: 1px solid var(--grey-2); }
+.data-table td { padding: var(--s2) var(--s2) var(--s2) 0; border-bottom: 1px solid var(--grey-2); vertical-align: top; line-height: 1.5; color: var(--grey-8); }
+.data-table td:first-child { color: var(--black); font-weight: 500; }
+.data-table tr:last-child td { border-bottom: none; }
+.pill { display: inline-block; font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 2px; }
+.pill-high { background: #fff0f0; color: #c00; }
+.pill-medium { background: #fff8e6; color: #8a5c00; }
+.pill-low { background: var(--grey-1); color: var(--grey-7); }
+.pill-done { background: #edfaf3; color: #1a7a3c; }
+.pill-open { background: #fff0f0; color: #c00; }
+.pill-pending { background: var(--grey-1); color: var(--grey-7); }
+
+/* Feature grid */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--grey-2);
+  margin-top: var(--s4);
+}
+.feature-cell {
+  background: var(--white);
+  padding: var(--s4);
+  transition: background 0.15s;
+}
+.feature-cell:hover { background: var(--grey-1); }
+.feature-index { font-size: 0.75rem; font-weight: 500; color: var(--red); letter-spacing: 0.08em; margin-bottom: var(--s2); }
+.feature-title { font-size: 1rem; font-weight: 700; margin-bottom: var(--s1); line-height: 1.2; }
+.feature-desc { font-size: 0.875rem; color: var(--grey-7); line-height: 1.55; }
+
+/* Decisions log */
+.decision-row { padding: var(--s3) 0; border-bottom: 1px solid var(--grey-2); display: grid; grid-template-columns: 3fr 4fr 1fr; gap: var(--s4); align-items: start; }
+.decision-row:last-child { border-bottom: none; }
+.decision-title { font-size: 0.875rem; font-weight: 600; line-height: 1.4; }
+.decision-reason { font-size: 0.875rem; color: var(--grey-7); line-height: 1.55; }
+.decision-date { font-size: 0.75rem; color: var(--grey-6); white-space: nowrap; }
+
+/* Principles */
+.principle-list { list-style: none; margin-top: var(--s4); }
+.principle-list li { display: grid; grid-template-columns: 2rem 1fr; gap: var(--s2); padding: var(--s2) 0; border-bottom: 1px solid var(--grey-2); font-size: 0.9375rem; line-height: 1.6; }
+.principle-list li:last-child { border-bottom: none; }
+.principle-num { font-size: 0.75rem; color: var(--grey-6); font-weight: 500; padding-top: 3px; }
+
+/* Footer */
+footer { padding: var(--s5) 0; background: var(--grey-1); }
+.footer-inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--gutter); display: flex; justify-content: space-between; align-items: center; }
+.footer-note { font-size: 0.75rem; color: var(--grey-6); }
+
+@media (max-width: 768px) {
+  .hero-grid, .dimension-grid { grid-template-columns: 1fr; }
+  .hero-divider { display: none; }
+  .stat-strip { grid-template-columns: repeat(2, 1fr); }
+  .feature-grid { grid-template-columns: 1fr; }
+  .decision-row { grid-template-columns: 1fr; gap: var(--s1); }
+  .nav-links { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div id="progress-bar"></div>
+
+<nav>
+  <div class="nav-inner">
+    <span class="nav-title">11+ Coach</span>
+    <ul class="nav-links">
+      <li><a href="#roadmap">Roadmap</a></li>
+      <li><a href="#issues">Issues</a></li>
+      <li><a href="#content">Content</a></li>
+      <li><a href="#decisions">Decisions</a></li>
+      <li><a href="#principles">Principles</a></li>
+    </ul>
+    <span class="nav-meta">Last updated May 2026</span>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="container">
+    <p class="label">Product Roadmap &amp; Spec</p>
+    <div class="hero-grid">
+      <div>
+        <h1 class="hero-title">11+ Coach</h1>
+      </div>
+      <div class="hero-divider"></div>
+      <div class="hero-body">
+        <p>An AI-enhanced coaching and testing tool for Dave's son, preparing for the Kent Test and Bexley Selection Test in September 2026. Warm and encouraging for the student. Analytical and data-driven for the parent.</p>
+        <p>Built for one child. Architected to generalise without a rebuild. Don't build the generalisation — don't foreclose it.</p>
+      </div>
+    </div>
+
+    <div class="stat-strip">
+      <div class="stat-cell">
+        <div class="stat-num">327</div>
+        <div class="stat-label">Words in bank</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num">4</div>
+        <div class="stat-label">Question formats</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num">39%</div>
+        <div class="stat-label">Vocab baseline</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num">85%</div>
+        <div class="stat-label">Target score</div>
+      </div>
+    </div>
+
+    <div class="meta-row">
+      <span class="meta-item"><strong>Exam date:</strong> September 2026</span>
+      <span class="meta-item"><strong>Current version:</strong> v1.2c</span>
+      <span class="meta-item"><strong>Platform:</strong> Cowork artifact</span>
+      <span class="meta-item"><strong>Vocab weighting (Bexley):</strong> 50%</span>
+    </div>
+  </div>
+</div>
+
+<!-- ROADMAP -->
+<section id="roadmap">
+  <div class="container">
+    <p class="label">Roadmap</p>
+    <div class="dimension-grid">
+      <div class="dimension-left">
+        <div class="dimension-index">01</div>
+        <div class="dimension-title">Versioned milestones</div>
+        <div class="dimension-desc">Ordered by exam-outcome impact. Features that move the score ship first.</div>
+      </div>
+      <div>
+
+        <div class="version-block">
+          <div class="version-head">
+            <span class="version-tag">v1.2c</span>
+            <span class="version-status shipped">Shipped ✓</span>
+            <span class="version-goal">— Cowork platform, 327-word bank, AI coaching fixed, 4 formats</span>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>Feature</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>Cowork artifact deployment</td><td>Self-contained HTML, no hosting needed</td></tr>
+              <tr><td>327-word vocab bank</td><td>149 original + 178 Quest words (May 2026)</td></tr>
+              <tr><td>4 question formats</td><td>Synonym, antonym, definition, fill-blank</td></tr>
+              <tr><td>Leitner spaced repetition</td><td>6 boxes, format-aware mastery</td></tr>
+              <tr><td>AI coaching (student + coach)</td><td>Tightened prompts: concrete examples, no waffle</td></tr>
+              <tr><td>Timer UI</td><td>Live elapsed pill, QPM on session end</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="version-block">
+          <div class="version-head">
+            <span class="version-tag">v1.3</span>
+            <span class="version-status next">Next</span>
+            <span class="version-goal">— Timer enhancements &amp; dashboard improvements</span>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>Feature</th><th style="width:80px">Priority</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>30-second rule mode</td><td><span class="pill pill-high">High</span></td><td>Flag questions >30s on result card</td></tr>
+              <tr><td>Timing metrics card (Coach)</td><td><span class="pill pill-high">High</span></td><td>Avg time, slow-question list</td></tr>
+              <tr><td>Per-format speed breakdown</td><td><span class="pill pill-medium">Medium</span></td><td>Are definition questions slower?</td></tr>
+              <tr><td>Format breakdown per word</td><td><span class="pill pill-medium">Medium</span></td><td>Which formats passed vs pending, per word</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="version-block">
+          <div class="version-head">
+            <span class="version-tag">v1.4</span>
+            <span class="version-status">Planned</span>
+            <span class="version-goal">— Content quality pass</span>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>Feature</th><th style="width:80px">Priority</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>Antonym/synonym accuracy audit</td><td><span class="pill pill-high">High</span></td><td>All 327 words. Precise opposites only, single words only.</td></tr>
+              <tr><td>Multi-word antonym removal</td><td><span class="pill pill-high">High</span></td><td>"Tell the truth" style entries can't render as cards</td></tr>
+              <tr><td>Vocab bank → 500+ words</td><td><span class="pill pill-medium">Medium</span></td><td>After quality audit. Full Quest list + Bexley additions.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="version-block">
+          <div class="version-head">
+            <span class="version-tag">v1.5</span>
+            <span class="version-status">Planned</span>
+            <span class="version-goal">— New question domains</span>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>Feature</th><th style="width:80px">Priority</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>Maths question bank</td><td><span class="pill pill-medium">Medium</span></td><td>25% Bexley weighting</td></tr>
+              <tr><td>Comprehension / Cloze</td><td><span class="pill pill-medium">Medium</span></td><td>59% baseline, meaningful gap</td></tr>
+              <tr><td>Shuffled sentences (VR)</td><td><span class="pill pill-low">Low</span></td><td>64% baseline — lowest gap</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- KNOWN ISSUES -->
+<section id="issues">
+  <div class="container">
+    <p class="label">Known Issues</p>
+    <div class="dimension-grid">
+      <div class="dimension-left">
+        <div class="dimension-index">02</div>
+        <div class="dimension-title">Open &amp; fixed</div>
+        <div class="dimension-desc">Track here. Nothing leaves this list until it's shipped and verified.</div>
+      </div>
+      <div>
+        <table class="data-table">
+          <thead><tr><th>Issue</th><th>Severity</th><th>Status</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Antonym/synonym accuracy</td>
+              <td><span class="pill pill-high">High</span></td>
+              <td><span class="pill pill-open">Open</span></td>
+              <td>"reveal" as antonym of "delude" — associative, not precise. Full audit of all 327 words needed. Scheduled v1.4.</td>
+            </tr>
+            <tr>
+              <td>Multi-word antonym entries</td>
+              <td><span class="pill pill-high">High</span></td>
+              <td><span class="pill pill-open">Open</span></td>
+              <td>e.g. "tell the truth" — can't render as an option card. Remove in v1.4 audit.</td>
+            </tr>
+            <tr>
+              <td>Format badge visibility</td>
+              <td><span class="pill pill-low">Low</span></td>
+              <td><span class="pill pill-open">Open</span></td>
+              <td>Make it more prominent — student making silly mistakes reading question type</td>
+            </tr>
+            <tr>
+              <td>AI coaching — academic tone</td>
+              <td><span class="pill pill-high">High</span></td>
+              <td><span class="pill pill-done">Fixed ✓</span></td>
+              <td>Prompts tightened May 2026. Student: concrete examples, no however/while. Coach: 2 sentences, no waffle.</td>
+            </tr>
+            <tr>
+              <td>callAI undefined (silent failure)</td>
+              <td><span class="pill pill-high">High</span></td>
+              <td><span class="pill pill-done">Fixed ✓</span></td>
+              <td>callAI not defined in JSX → ReferenceError → no coaching shown. Fixed v1.2c.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTENT OPS -->
+<section id="content">
+  <div class="container">
+    <p class="label">Content Operations</p>
+    <div class="dimension-grid">
+      <div class="dimension-left">
+        <div class="dimension-index">03</div>
+        <div class="dimension-title">Data tasks — not code changes</div>
+        <div class="dimension-desc">Run as separate operations. Schema is stable — do not change it.</div>
+      </div>
+      <div>
+        <table class="data-table">
+          <thead><tr><th>Task</th><th>Status</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Original 149-word bank</td><td><span class="pill pill-done">Done ✓</span></td><td>Hand-crafted, reviewed</td></tr>
+            <tr><td>Quest PDF cross-reference (178 words)</td><td><span class="pill pill-done">Done ✓</span></td><td>May 2026. Bank now at 327 words.</td></tr>
+            <tr><td>Distractor dictionary (804 entries)</td><td><span class="pill pill-done">Done ✓</span></td><td>Used for option card definitions</td></tr>
+            <tr><td>Antonym/synonym accuracy audit</td><td><span class="pill pill-open">Not started</span></td><td>All 327 words. Single-word. Precisely opposite. Same/compatible POS. Age-appropriate.</td></tr>
+            <tr><td>Scale bank to 500+ words</td><td><span class="pill pill-pending">Pending audit</span></td><td>Exam Ninja 1800-word list + Bexley additions. After quality pass only.</td></tr>
+          </tbody>
+        </table>
+
+        <div style="margin-top: var(--s4); padding: var(--s4); background: var(--grey-1);">
+          <p style="font-size:0.75rem; font-weight:500; letter-spacing:0.08em; text-transform:uppercase; color:var(--grey-6); margin-bottom:var(--s2);">Quality bar — antonyms</p>
+          <p style="font-size:0.875rem; color:var(--grey-8); line-height:1.6;">Single word. Directly opposite in meaning — not associatively related. Same or compatible part of speech. Age-appropriate for 10–11 year olds. If no clean antonym exists for a word, remove the antonym field rather than add a weak one.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FUTURE IDEAS -->
+<section>
+  <div class="container">
+    <p class="label">Future State — Not Committed</p>
+    <div class="feature-grid">
+      <div class="feature-cell">
+        <div class="feature-index">01</div>
+        <div class="feature-title">Standalone hosting</div>
+        <div class="feature-desc">Netlify or GitHub Pages. Flagged, not prioritised. Cowork artifact covers current need.</div>
+      </div>
+      <div class="feature-cell">
+        <div class="feature-index">02</div>
+        <div class="feature-title">Exam region config</div>
+        <div class="feature-desc">Generalise beyond Kent/Bexley. EXAM_CONFIG already separated — swap data, not code.</div>
+      </div>
+      <div class="feature-cell">
+        <div class="feature-index">03</div>
+        <div class="feature-title">Child profiles</div>
+        <div class="feature-desc">Multiple students, initial assessment per profile. Requires auth layer.</div>
+      </div>
+      <div class="feature-cell">
+        <div class="feature-index">04</div>
+        <div class="feature-title">Tutor collaboration</div>
+        <div class="feature-desc">Session report export, tutor notes, shared progress view.</div>
+      </div>
+      <div class="feature-cell">
+        <div class="feature-index">05</div>
+        <div class="feature-title">Coaching tone calibration</div>
+        <div class="feature-desc">AI coaching prompts untested with the actual child. May need age/style adjustment.</div>
+      </div>
+      <div class="feature-cell">
+        <div class="feature-index">06</div>
+        <div class="feature-title">Difficulty progression</div>
+        <div class="feature-desc">Adaptive difficulty tier. Currently static — difficulty(1–5) field unused in routing.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DECISIONS LOG -->
+<section id="decisions">
+  <div class="container">
+    <p class="label">Decisions Log</p>
+    <div class="dimension-grid">
+      <div class="dimension-left">
+        <div class="dimension-index">04</div>
+        <div class="dimension-title">What was decided and why</div>
+        <div class="dimension-desc">Prevents re-litigating settled questions. Add an entry whenever a significant call is made.</div>
+      </div>
+      <div>
+        <div class="decision-row" style="font-size:0.75rem; color:var(--grey-6); font-weight:500; letter-spacing:0.08em; text-transform:uppercase; padding-bottom:var(--s1);">
+          <span>Decision</span><span>Rationale</span><span>Date</span>
+        </div>
+        <div class="decision-row">
+          <div class="decision-title">Vocab as P1, NVR deprioritised</div>
+          <div class="decision-reason">Bexley 50% verbal weighting — vocab gains count double. NVR at 58% is relative strength.</div>
+          <div class="decision-date">Apr 2026</div>
+        </div>
+        <div class="decision-row">
+          <div class="decision-title">Cowork artifact over standalone hosting</div>
+          <div class="decision-reason">Faster iteration, no deployment friction, AI available without API key.</div>
+          <div class="decision-date">May 2026</div>
+        </div>
+        <div class="decision-row">
+          <div class="decision-title">Single JSX file + build pipeline</div>
+          <div class="decision-reason">Self-contained, no framework overhead, AI-readable source of truth.</div>
+          <div class="decision-date">May 2026</div>
+        </div>
+        <div class="decision-row">
+          <div class="decision-title">Leitner mastery = box ≥3 AND all formats passed</div>
+          <div class="decision-reason">Box alone insufficient — word must be seen in all available question types before it's truly mastered.</div>
+          <div class="decision-date">May 2026</div>
+        </div>
+        <div class="decision-row">
+          <div class="decision-title">AI enhances, does not enable</div>
+          <div class="decision-reason">Core practice must work fully offline and AI-off. Static definitions always available. AI adds coaching layer only.</div>
+          <div class="decision-date">May 2026</div>
+        </div>
+        <div class="decision-row">
+          <div class="decision-title">Tightened student coaching prompts</div>
+          <div class="decision-reason">Old prompts drifted into academic analysis. New: ban however/while, require concrete image/analogy, no word comparisons.</div>
+          <div class="decision-date">May 2026</div>
+        </div>
+        <div class="decision-row">
+          <div class="decision-title">Antonym quality: precise not associative</div>
+          <div class="decision-reason">"reveal" as antonym of "delude" — technically related but pedagogically weak. Full quality audit scheduled v1.4.</div>
+          <div class="decision-date">May 2026</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRINCIPLES -->
+<section id="principles">
+  <div class="container">
+    <p class="label">Product Principles</p>
+    <div class="dimension-grid">
+      <div class="dimension-left">
+        <div class="dimension-index">05</div>
+        <div class="dimension-title">The rules</div>
+        <div class="dimension-desc">Challenge any feature that can't trace back to one of these.</div>
+      </div>
+      <div>
+        <ul class="principle-list">
+          <li><span class="principle-num">01</span><span><strong>Exam-outcome driven.</strong> Every feature decision traces back to what moves the score. Bexley vocab gap is the primary target until September.</span></li>
+          <li><span class="principle-num">02</span><span><strong>SLC/MLP standard.</strong> Ship lean, maintain quality, avoid premature complexity. Backlog items are explicitly tracked and deferred — not ignored.</span></li>
+          <li><span class="principle-num">03</span><span><strong>AI enhances, does not enable.</strong> Core practice works without AI. AI adds the coaching layer. Graceful degradation is not optional.</span></li>
+          <li><span class="principle-num">04</span><span><strong>Architecture supports generalisation.</strong> Don't build it. Don't foreclose it. Config is data, not logic.</span></li>
+          <li><span class="principle-num">05</span><span><strong>Content quality over quantity.</strong> A weak antonym is worse than no antonym — it teaches the wrong thing. Get the data right before scaling.</span></li>
+          <li><span class="principle-num">06</span><span><strong>Challenge drift.</strong> If a feature doesn't trace to exam outcome or a named principle, question it directly before building.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <span class="footer-note">11+ Coach — Product Roadmap &amp; Spec · Living document · May 2026</span>
+    <span class="footer-note">Exam: September 2026 · v1.2c current</span>
+  </div>
+</footer>
+
+<script>
+  // Progress bar
+  window.addEventListener('scroll', () => {
+    const scrollTop = window.scrollY;
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const pct = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+    document.getElementById('progress-bar').style.width = pct + '%';
+  });
+</script>
+</body>
+</html>
