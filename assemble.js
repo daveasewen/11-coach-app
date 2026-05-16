@@ -128,6 +128,6 @@ console.log("");
 console.log("Verification:");
 console.log(`  Script tags:    ${(html.match(/<script/g) || []).length} (expected 6)`);
 console.log(`  import{{:        ${(html.match(/import\{/g) || []).length} (expected 0)`);
-console.log(`  createRoot:     ${(html.match(/createRoot/g) || []).length} (expected 2)`);
+console.log(`  createRoot:     ${(html.match(/createRoot/g) || []).length} (expected 1)`);
 console.log("");
 console.log("Next: update the Cowork artifact with the new 11plus-coach.html");

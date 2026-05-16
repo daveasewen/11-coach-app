@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 
-const VERSION = "1.10.0";
+const VERSION = "1.11.0";
 
 const BASELINE = {
   overall: { score: 108, total: 200, pct: 54 },
@@ -2755,6 +2755,13 @@ const css = `
   .result-correct { font-size:13px; color:var(--green); font-weight:600; margin-bottom:3px; }
   .result-eg { font-size:11px; color:var(--ink-soft); font-style:italic; }
   .slow-flag { margin-top:7px; padding:5px 8px; background:#fff3cd; border:1px solid #f0ad4e; border-radius:5px; font-size:11px; font-weight:700; color:#856404; }
+  /* Timed mode v1.11 */
+  .timer-bar-wrap { height:5px; border-radius:2px; overflow:hidden; margin:-6px -14px 14px; background:var(--cream); }
+  .timer-bar-fill { height:100%; border-radius:2px; transition:width 0.9s linear, background 0.4s; }
+  .result-block.timeout { background:#fff8e8; border:1px solid var(--gold); }
+  .timed-toggle { background:var(--cream); border:1px solid var(--border); border-radius:14px; padding:5px 14px; font-size:12px; font-weight:700; cursor:pointer; transition:all 0.2s; color:var(--ink-soft); font-family:'DM Sans',sans-serif; }
+  .timed-toggle.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .cs.slow .val { color:var(--red); }
 
   .ai-box { background:linear-gradient(135deg,#1a1a2e,#2355a0); color:white; border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:10px; font-size:13px; line-height:1.6; animation:fadeIn 0.3s ease; }
   .ai-label { font-size:9px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; opacity:0.5; margin-bottom:4px; }
@@ -3025,7 +3032,7 @@ function OptionCard({ opt, selected, correct, answered, onAnswer, onAidUsed, aid
 }
 
 // ─── VOCAB SESSION ────────────────────────────────────────────────────────────
-function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficulty = 5 }) {
+function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficulty = 5, timedMode = false }) {
   const [queue] = useState(() => {
     const due = getDueWords(leitnerBoxes, maxDifficulty).slice(0, 20);
     // Distribute formats across the session so they rotate visibly.
@@ -3058,6 +3065,7 @@ function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficul
   const [done, setDone] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const t0 = useRef(Date.now());
+  const timeoutFired = useRef(false);
 
   useEffect(() => {
     if (!queue.length || idx >= queue.length) { setDone(true); return; }
@@ -3069,6 +3077,7 @@ function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficul
       || buildQuestion(w, "antonym");
     setQuestion(q); setSelected(null); setAidLog({}); setAiCoach(null);
     t0.current = Date.now();
+    timeoutFired.current = false;
   }, [idx, queue]);
 
   useEffect(() => {
@@ -3076,6 +3085,14 @@ function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficul
     const id = setInterval(() => setElapsed(Math.floor((Date.now() - t0.current) / 1000)), 500);
     return () => clearInterval(id);
   }, [idx]);
+
+  // Timed mode: auto-submit at 30s
+  useEffect(() => {
+    if (timedMode && selected === null && elapsed >= 30 && !timeoutFired.current) {
+      timeoutFired.current = true;
+      handleAnswer("__timeout__");
+    }
+  }, [elapsed, timedMode, selected]);
 
   const handleAid = (opt, type) => {
     setAidLog(prev => ({ ...prev, [opt]: { ...prev[opt], [type]: true } }));
@@ -3086,10 +3103,11 @@ function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficul
     const timeMs = Date.now() - t0.current;
     setCurrentTimeMs(timeMs);
     setSelected(opt);
-    const isCorrect = opt === question.correct;
+    const isTimedOut = opt === "__timeout__";
+    const isCorrect = !isTimedOut && opt === question.correct;
     const anyAid = Object.values(aidLog).some(a => Object.values(a).some(Boolean));
 
-    setResults(r => [...r, { word: question.word, correct: isCorrect, type: question.type }]);
+    setResults(r => [...r, { word: question.word, correct: isCorrect, type: question.type, timeMs, timedOut: isTimedOut }]);
     setSessionLog(l => [...l, { word: question.word, questionType: question.type, correct: isCorrect, timeMs, aidUsed: anyAid, aids: aidLog }]);
 
     if (aiEnabled) {
@@ -3101,7 +3119,9 @@ function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficul
           : `You are an 11+ coaching analyst. Write EXACTLY 2 sentences: one observation on this specific answer (time taken, aids used, difficulty level), one teaching action. No waffle.`;
         const wordDef = WORD_MAP[question.word]?.simpleDefinition || WORD_MAP[question.word]?.definition || "";
         const wordExample = VOCAB_BANK.find(w => w.word === question.word)?.example || "";
-        const user = isCorrect
+        const user = isTimedOut
+          ? `Student ran out of time on "${question.word}" (${question.type}, correct="${question.correct}", ${wordDef}${rootTip ? `; hook: ${rootTip}` : ""}). Write one memory-trick sentence using a vivid image, max 15 words:\nSentence:`
+          : isCorrect
           ? `Student got "${question.word}" RIGHT (${(timeMs/1000).toFixed(1)}s, aids=${anyAid}). Write one fun celebration sentence, max 10 words:\nSentence:`
           : `Student got "${question.word}" WRONG — chose "${opt}", correct="${question.correct}" (${wordDef}${wordExample ? `; example: "${wordExample}"` : ""}${rootTip ? `; memory hook: ${rootTip}` : ""}). Write one memory-trick sentence using a vivid image or analogy, max 15 words:\nSentence:`;
         const text = await callAI(user, sys);
@@ -3117,6 +3137,10 @@ function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficul
     const pct = total ? Math.round(correct / total * 100) : 0;
     const totalMs = sessionLog.reduce((sum, r) => sum + (r.timeMs || 0), 0);
     const qpm = totalMs > 0 ? Math.round((total / (totalMs / 60000)) * 10) / 10 : 0;
+    const timedOutCount = results.filter(r => r.timedOut).length;
+    const answeredResults = results.filter(r => r.timeMs !== undefined);
+    const avgTimeSec = answeredResults.length ? (answeredResults.reduce((s,r)=>s+r.timeMs,0)/answeredResults.length/1000).toFixed(1) : "-";
+    const pctUnder30 = answeredResults.length ? Math.round(answeredResults.filter(r=>!r.timedOut && r.timeMs<=30000).length/answeredResults.length*100) : 0;
     return (
       <div className="complete">
         <div className="complete-icon">{pct >= 80 ? "🌟" : pct >= 60 ? "💪" : "📖"}</div>
@@ -3128,6 +3152,13 @@ function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficul
           <div className="cs warn"><div className="val">{total - correct}</div><div className="lbl">Review</div></div>
           <div className="cs"><div className="val">{qpm}</div><div className="lbl">Q/min</div></div>
         </div>
+        {timedMode && answeredResults.length > 0 && (
+          <div className="complete-stats" style={{ marginTop:8 }}>
+            <div className="cs"><div className="val" style={{ fontFamily:"Fraunces,serif", fontSize:18 }}>{avgTimeSec}s</div><div className="lbl">Avg time</div></div>
+            <div className={`cs ${pctUnder30 >= 80 ? "good" : pctUnder30 >= 60 ? "warn" : "slow"}`}><div className="val">{pctUnder30}%</div><div className="lbl">Under 30s</div></div>
+            {timedOutCount > 0 && <div className="cs slow"><div className="val">{timedOutCount}</div><div className="lbl">Timed out</div></div>}
+          </div>
+        )}
         <button className="next-btn" onClick={() => onSessionEnd(results, sessionLog)}>Save & finish</button>
       </div>
     );
@@ -3135,6 +3166,7 @@ function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficul
 
   if (!question) return null;
   const isCorrect = selected === question.correct;
+  const isTimedOut = selected === "__timeout__";
 
   return (
     <>
@@ -3143,9 +3175,14 @@ function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficul
         <div className="stat-pill"><div className="val">{idx + 1}/{queue.length}</div><div className="lbl">Question</div></div>
         <div className="stat-pill good"><div className="val">{results.filter(r => r.correct).length}</div><div className="lbl">Correct</div></div>
         <div className="stat-pill warn"><div className="val">{results.filter(r => !r.correct).length}</div><div className="lbl">Review</div></div>
-        <div className={`stat-pill ${elapsed < 20 ? "good" : elapsed <= 30 ? "warn" : "slow"}`}><div className="val">{selected ? "✓" : `${elapsed}s`}</div><div className="lbl">Time</div></div>
+        <div className={`stat-pill ${timedMode ? (elapsed < 20 ? "good" : elapsed < 28 ? "warn" : "slow") : (elapsed < 20 ? "good" : elapsed <= 30 ? "warn" : "slow")}`}><div className="val">{selected ? "✓" : timedMode ? `${Math.max(0, 30 - elapsed)}` : `${elapsed}s`}</div><div className="lbl">{timedMode && !selected ? "Left" : "Time"}</div></div>
       </div>
       <div className="card">
+        {timedMode && !selected && (
+          <div className="timer-bar-wrap">
+            <div className="timer-bar-fill" style={{ width:`${Math.max(0,(30-elapsed)/30*100)}%`, background: elapsed >= 25 ? "var(--red)" : elapsed >= 18 ? "var(--gold)" : "var(--green)" }} />
+          </div>
+        )}
         <div className="q-header">
           <div className="q-header-top">
             <div className="q-word">
@@ -3182,15 +3219,15 @@ function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficul
 
         {selected && (
           <>
-            <div className={`result-block ${isCorrect ? "correct" : "wrong"}`}>
-              <div className="result-icon">{isCorrect ? "✓" : "✗"}</div>
-              <div className="result-title">{isCorrect ? "Correct!" : "Not quite."}</div>
+            <div className={`result-block ${isCorrect ? "correct" : isTimedOut ? "timeout" : "wrong"}`}>
+              <div className="result-icon">{isCorrect ? "✓" : isTimedOut ? "⏱" : "✗"}</div>
+              <div className="result-title">{isCorrect ? "Correct!" : isTimedOut ? "Time's up!" : "Not quite."}</div>
               {!isCorrect && <div className="result-correct">The answer is: {question.correct}</div>}
               {(question.type === "definition" || question.type === "fillblank") && (
                 <div className="result-word">"{question.word}" — {WORD_MAP[question.word]?.simpleDefinition}</div>
               )}
               <div className="result-eg">e.g. {WORD_MAP[question.word]?.example}</div>
-              {currentTimeMs > 30000 && (
+              {!timedMode && currentTimeMs > 30000 && (
                 <div className="slow-flag">⏱ {(currentTimeMs/1000).toFixed(0)}s — aim for under 30s on this one</div>
               )}
             </div>
@@ -3504,7 +3541,7 @@ function VRLetterCodeAnalogy({ q, selected, onAnswer }) {
 }
 
 // ─── VR SESSION ───────────────────────────────────────────────────────────────
-function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficulty = 5 }) {
+function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficulty = 5, timedMode = false }) {
   const [queue] = useState(() => {
     const due = getDueVRQuestions(vrLeitnerBoxes, maxDifficulty).slice(0, 12);
     // Inject 1 of each of the 6 generated VR types alongside Leitner-due items.
@@ -3527,10 +3564,12 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
   const [aiCoach, setAiCoach] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const t0 = useRef(Date.now());
+  const timeoutFired = useRef(false);
 
   useEffect(() => {
     if (!queue.length || idx >= queue.length) { setDone(true); return; }
     setSelected(null); setAiCoach(null); t0.current = Date.now();
+    timeoutFired.current = false;
   }, [idx, queue]);
 
   useEffect(() => {
@@ -3539,13 +3578,22 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
     return () => clearInterval(id);
   }, [idx]);
 
+  // Timed mode: auto-submit at 30s
+  useEffect(() => {
+    if (timedMode && selected === null && elapsed >= 30 && !timeoutFired.current) {
+      timeoutFired.current = true;
+      handleAnswer("__timeout__");
+    }
+  }, [elapsed, timedMode, selected]);
+
   const handleAnswer = async (opt) => {
     if (selected !== null) return;
     const timeMs = Date.now() - t0.current;
     setSelected(opt);
     const q = queue[idx];
-    const isCorrect = opt === q.correct;
-    setResults(r => [...r, { id: q.id, correct: isCorrect, type: q.type, timeMs }]);
+    const isTimedOut = opt === "__timeout__";
+    const isCorrect = !isTimedOut && opt === q.correct;
+    setResults(r => [...r, { id: q.id, correct: isCorrect, type: q.type, timeMs, timedOut: isTimedOut }]);
 
     if (aiEnabled) {
       setAiLoading(true);
@@ -3554,7 +3602,9 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
           ? `You write 1–2 sentences max for a 10-year-old doing 11+ verbal reasoning practice. Give a memory trick or brief celebration — nothing else.`
           : `You are an 11+ coaching analyst. Write EXACTLY 2 sentences: one observation on this answer, one teaching action. No waffle.`;
         let user;
-        if (isCorrect) {
+        if (isTimedOut) {
+          user = `Student ran out of time on a ${q.type} question. Correct answer was "${q.correct}". Give a quick memory tip in 1 sentence for a 10-year-old.`;
+        } else if (isCorrect) {
           user = `Student got a ${q.type} question RIGHT in ${(timeMs/1000).toFixed(1)}s. One short celebration (max 10 words):`;
         } else if (q.type === "analogy") {
           user = `Student got analogy wrong: "${q.given[0]} : ${q.given[1]} :: ${q.stem} : ___". Chose "${opt}", correct is "${q.correct}". Explain the relationship in 1 sentence for a 10-year-old.`;
@@ -3612,6 +3662,18 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
           <div className="cs warn"><div className="val">{total - correct}</div><div className="lbl">Review</div></div>
           <div className="cs"><div className="val">{qpm}</div><div className="lbl">Q/min</div></div>
         </div>
+        {timedMode && results.length > 0 && (() => {
+          const timedOutCount = results.filter(r => r.timedOut).length;
+          const avgTimeSec = (results.reduce((s,r)=>s+r.timeMs,0)/results.length/1000).toFixed(1);
+          const pctUnder30 = Math.round(results.filter(r=>!r.timedOut && r.timeMs<=30000).length/results.length*100);
+          return (
+            <div className="complete-stats" style={{ marginTop:8 }}>
+              <div className="cs"><div className="val" style={{ fontFamily:"Fraunces,serif", fontSize:18 }}>{avgTimeSec}s</div><div className="lbl">Avg time</div></div>
+              <div className={`cs ${pctUnder30 >= 80 ? "good" : pctUnder30 >= 60 ? "warn" : "slow"}`}><div className="val">{pctUnder30}%</div><div className="lbl">Under 30s</div></div>
+              {timedOutCount > 0 && <div className="cs slow"><div className="val">{timedOutCount}</div><div className="lbl">Timed out</div></div>}
+            </div>
+          );
+        })()}
         <button className="next-btn" onClick={() => onSessionEnd(results, [])}>Save & finish</button>
       </div>
     );
@@ -3619,6 +3681,7 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
 
   const q = queue[idx];
   const isCorrect = selected === q.correct;
+  const isTimedOut = selected === "__timeout__";
 
   return (
     <>
@@ -3627,9 +3690,14 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
         <div className="stat-pill"><div className="val">{idx + 1}/{queue.length}</div><div className="lbl">Question</div></div>
         <div className="stat-pill good"><div className="val">{results.filter(r => r.correct).length}</div><div className="lbl">Correct</div></div>
         <div className="stat-pill warn"><div className="val">{results.filter(r => !r.correct).length}</div><div className="lbl">Review</div></div>
-        <div className={`stat-pill ${elapsed < 20 ? "good" : elapsed <= 30 ? "warn" : "slow"}`}><div className="val">{selected !== null ? "✓" : `${elapsed}s`}</div><div className="lbl">Time</div></div>
+        <div className={`stat-pill ${timedMode ? (elapsed < 20 ? "good" : elapsed < 28 ? "warn" : "slow") : (elapsed < 20 ? "good" : elapsed <= 30 ? "warn" : "slow")}`}><div className="val">{selected !== null ? "✓" : timedMode ? `${Math.max(0, 30 - elapsed)}` : `${elapsed}s`}</div><div className="lbl">{timedMode && selected === null ? "Left" : "Time"}</div></div>
       </div>
       <div className="card">
+        {timedMode && selected === null && (
+          <div className="timer-bar-wrap">
+            <div className="timer-bar-fill" style={{ width:`${Math.max(0,(30-elapsed)/30*100)}%`, background: elapsed >= 25 ? "var(--red)" : elapsed >= 18 ? "var(--gold)" : "var(--green)" }} />
+          </div>
+        )}
         {q.type === "analogy"                                              && <VRAnalogy   q={q} selected={selected} onAnswer={handleAnswer} />}
         {q.type === "odd_one_out"                                          && <VROddOneOut  q={q} selected={selected} onAnswer={handleAnswer} />}
         {(q.type === "antonym_pair" || q.type === "synonym_pair")          && <VRWordPair  q={q} selected={selected} onAnswer={handleAnswer} />}
@@ -3641,12 +3709,12 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
         {selected === null && <div className="hint-row">Tap your answer</div>}
         {selected !== null && (
           <>
-            <div className={`result-block ${isCorrect ? "correct" : "wrong"}`}>
-              <div className="result-icon">{isCorrect ? "✓" : "✗"}</div>
-              <div className="result-title">{isCorrect ? "Correct!" : "Not quite."}</div>
+            <div className={`result-block ${isCorrect ? "correct" : isTimedOut ? "timeout" : "wrong"}`}>
+              <div className="result-icon">{isCorrect ? "✓" : isTimedOut ? "⏱" : "✗"}</div>
+              <div className="result-title">{isCorrect ? "Correct!" : isTimedOut ? "Time's up!" : "Not quite."}</div>
               {!isCorrect && <div className="result-correct">The answer was: <strong>{q.correct}</strong></div>}
               {q.type === "odd_one_out" && q.explanation && <div className="result-word">{q.explanation}</div>}
-              {elapsed > 30 && <div className="slow-flag">⏱ {elapsed}s — aim for under 30s</div>}
+              {!timedMode && elapsed > 30 && <div className="slow-flag">⏱ {elapsed}s — aim for under 30s</div>}
             </div>
             {aiEnabled && (aiLoading || aiCoach) && (
               <div className="ai-box">
@@ -3875,6 +3943,37 @@ function Dashboard({ leitnerBoxes, sessionHistory }) {
         </div>
       )}
 
+      {(() => {
+        const timedSessions = sessionHistory.filter(s => s.timedMode && s.avgTimeMs);
+        if (timedSessions.length < 2) return null;
+        const last8 = timedSessions.slice(-8);
+        const maxMs = Math.max(...last8.map(s => s.avgTimeMs), 30000);
+        return (
+          <div className="card">
+            <div className="card-title">Speed Trend</div>
+            <div className="card-sub">Timed sessions — avg time per question</div>
+            <div style={{ display:"flex", alignItems:"flex-end", gap:6, height:60, marginTop:8, marginBottom:4 }}>
+              {last8.map((s, i) => {
+                const barH = Math.round((s.avgTimeMs / maxMs) * 56);
+                const col = s.avgTimeMs > 25000 ? "var(--red)" : s.avgTimeMs > 18000 ? "var(--gold)" : "var(--green)";
+                return (
+                  <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+                    <div style={{ fontSize:9, color:"var(--ink-soft)", fontWeight:700 }}>{(s.avgTimeMs/1000).toFixed(0)}s</div>
+                    <div style={{ width:"100%", height:barH, background:col, borderRadius:3, minHeight:4 }} />
+                    <div style={{ fontSize:9, color:"var(--ink-soft)" }}>{s.domain==="vr"?"VR":"Vc"}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"var(--ink-soft)", marginTop:2 }}>
+              <span>older</span>
+              <span>target: under 20s avg</span>
+              <span>latest</span>
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="card">
         <div className="card-title">Phase Milestones</div>
         <div className="card-sub">April → September 2026</div>
@@ -3987,14 +4086,15 @@ function ProfileCreator({ onSave, onCancel, initial, onResetProgress }) {
   const [yearGroup, setYearGroup] = useState(initial?.yearGroup || "");
   const [avatar,    setAvatar]    = useState(initial?.avatar    || PROFILE_AVATARS[0]);
   const [colour,    setColour]    = useState(initial?.colour    || PROFILE_COLOURS[0]);
+  const [timedMode, setTimedMode] = useState(initial?.timedMode || false);
   const [confirmReset, setConfirmReset] = useState(false);
   const canSave = name.trim() && yearGroup;
   const today = new Date().toISOString().split("T")[0]; // max birthdate = today
   const minDate = new Date(Date.now() - 16 * 365.25 * 86400000).toISOString().split("T")[0];
   const handleSave = () => {
     const saved = isEditing
-      ? { ...initial, name: name.trim(), birthdate, yearGroup, avatar, colour }
-      : { id: makeProfileId(), name: name.trim(), birthdate, yearGroup, avatar, colour, createdAt: Date.now() };
+      ? { ...initial, name: name.trim(), birthdate, yearGroup, avatar, colour, timedMode }
+      : { id: makeProfileId(), name: name.trim(), birthdate, yearGroup, avatar, colour, timedMode, createdAt: Date.now() };
     onSave(saved);
   };
   const handleReset = () => { onResetProgress(initial.id); onCancel(); };
@@ -4046,6 +4146,13 @@ function ProfileCreator({ onSave, onCancel, initial, onResetProgress }) {
         {PROFILE_COLOURS.map(c => (
           <div key={c} className={`colour-opt${colour === c ? " sel" : ""}`} style={{ background: c }} onClick={() => setColour(c)} />
         ))}
+      </div>
+      <div className="creator-label">Timed mode default</div>
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:18 }}>
+        <span style={{ fontSize:13, color:"var(--ink-soft)", flex:1 }}>Start sessions with a 30s per-question timer</span>
+        <button className={`timed-toggle${timedMode ? " on" : ""}`} onClick={() => setTimedMode(t => !t)}>
+          {timedMode ? "ON" : "OFF"}
+        </button>
       </div>
       <div className="creator-actions">
         <button className="creator-cancel" onClick={onCancel}>Cancel</button>
@@ -4280,6 +4387,7 @@ export default function App() {
   const [practising, setPractising] = useState(false);
   const [activeDomain, setActiveDomain] = useState("vocab");
   const [loaded, setLoaded] = useState(false);
+  const [sessionTimedMode, setSessionTimedMode] = useState(false);
 
   // v1.6 profiles
   const [profile, setProfile] = useState(null);
@@ -4332,13 +4440,22 @@ export default function App() {
   }, []);
 
   useEffect(() => { setTab(mode === "student" ? "practice" : "dashboard"); setPractising(false); }, [mode]);
+  useEffect(() => { setSessionTimedMode(profile?.timedMode || false); }, [profile]);
 
   const handleSessionEnd = async (domain, results, aidLog) => {
     const correct = results.filter(r => r.correct).length;
     const today = new Date().toDateString();
     const yesterday = new Date(Date.now() - 86400000).toDateString();
     const newStreak = { count: streak.lastDate === yesterday ? streak.count + 1 : streak.lastDate === today ? streak.count : 1, lastDate: today };
-    const newHistory = [...sessionHistory, { date: Date.now(), correct, total: results.length, aidLog, domain }];
+    // Capture timing stats for timed-mode sessions
+    const timedResults = results.filter(r => r.timeMs !== undefined && r.timeMs > 0);
+    const timingExtras = sessionTimedMode && timedResults.length > 0 ? {
+      timedMode: true,
+      avgTimeMs: Math.round(timedResults.reduce((s,r)=>s+r.timeMs,0)/timedResults.length),
+      pctUnder30: Math.round(timedResults.filter(r=>!r.timedOut && r.timeMs<=30000).length/timedResults.length*100),
+      timedOutCount: results.filter(r=>r.timedOut).length,
+    } : {};
+    const newHistory = [...sessionHistory, { date: Date.now(), correct, total: results.length, aidLog, domain, ...timingExtras }];
     const userKeys = getUserStorageKeys(profile.id);
 
     if (domain === "vocab") {
@@ -4478,8 +4595,8 @@ export default function App() {
         ) : tab === "practice" && mode === "student" ? (
           practising ? (
             activeDomain === "vocab"
-              ? <VocabSession leitnerBoxes={leitnerBoxes} onSessionEnd={(r, l) => handleSessionEnd("vocab", r, l)} aiEnabled={aiEnabled} mode={mode} maxDifficulty={maxDifficulty} />
-              : <VRSession vrLeitnerBoxes={vrLeitnerBoxes} onSessionEnd={(r, l) => handleSessionEnd("vr", r, l)} aiEnabled={aiEnabled} mode={mode} maxDifficulty={maxDifficulty} />
+              ? <VocabSession leitnerBoxes={leitnerBoxes} onSessionEnd={(r, l) => handleSessionEnd("vocab", r, l)} aiEnabled={aiEnabled} mode={mode} maxDifficulty={maxDifficulty} timedMode={sessionTimedMode} />
+              : <VRSession vrLeitnerBoxes={vrLeitnerBoxes} onSessionEnd={(r, l) => handleSessionEnd("vr", r, l)} aiEnabled={aiEnabled} mode={mode} maxDifficulty={maxDifficulty} timedMode={sessionTimedMode} />
           ) : (
             <>
               {streak.count >= 2 && <div className="streak-banner">🔥 {streak.count}-day streak — keep it up!</div>}
@@ -4500,12 +4617,21 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0 4px", marginTop:4 }}>
+                  <div>
+                    <span style={{ fontWeight:600, fontSize:13 }}>⏱ Timed mode</span>
+                    <span style={{ fontSize:11, color:"var(--ink-soft)", marginLeft:6 }}>30s per question</span>
+                  </div>
+                  <button className={`timed-toggle${sessionTimedMode ? " on" : ""}`} onClick={() => setSessionTimedMode(t => !t)}>
+                    {sessionTimedMode ? "ON" : "OFF"}
+                  </button>
+                </div>
                 {(dueCount > 0 || vrDueCount > 0) ? (
-                  <button className="next-btn" style={{ marginTop:12 }} onClick={() => {
+                  <button className="next-btn" style={{ marginTop:8 }} onClick={() => {
                     const domain = pickDomain(dueCount, vrDueCount, sessionHistory);
                     if (domain) { setActiveDomain(domain); setPractising(true); }
                   }}>
-                    Practice →
+                    {sessionTimedMode ? "⏱ Practice →" : "Practice →"}
                   </button>
                 ) : (
                   <div style={{ textAlign:"center", padding:"14px 0 4px", color:"var(--green)", fontWeight:700, fontSize:15 }}>
