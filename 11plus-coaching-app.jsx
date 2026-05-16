@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 
-const VERSION = "1.8.0";
+const VERSION = "1.10.0";
 
 const BASELINE = {
   overall: { score: 108, total: 200, pct: 54 },
@@ -1980,50 +1980,501 @@ function generateLetterSequence(maxDifficulty) {
   return { id: null, type: "letter_sequence", sequence, correct, options: shuffle([correct, ...distractors]), rule: pattern.rule, difficulty: pattern.diff };
 }
 
-// ─── NUMBER SEQUENCE GENERATOR ────────────────────────────────────────────────
-// Generates a 4-item arithmetic number sequence + correct next term + 3 distractors.
-// Capped at difficulty 2 for v1.9; geometric/alternating patterns extend in v1.10.
+// ─── NUMBER SEQUENCE GENERATOR (v1.10) ────────────────────────────────────────
+// Patterns: arithmetic, geometric, alternating, increasing-difference, interleaved, mixed-alt.
+// Pattern availability scales with difficulty band (1–4).
 function generateNumberSequence(maxDifficulty) {
-  const diff = Math.max(1, Math.min(maxDifficulty, 2));
-  const patterns = [
-    { rule: "+2",  step:  2, diff: 1 },
-    { rule: "+3",  step:  3, diff: 1 },
-    { rule: "+5",  step:  5, diff: 1 },
-    { rule: "+10", step: 10, diff: 1 },
-    { rule: "-2",  step: -2, diff: 1 },
-    { rule: "-3",  step: -3, diff: 1 },
-    { rule: "+6",  step:  6, diff: 2 },
-    { rule: "+7",  step:  7, diff: 2 },
-    { rule: "+9",  step:  9, diff: 2 },
-    { rule: "-4",  step: -4, diff: 2 },
-    { rule: "-5",  step: -5, diff: 2 },
-  ].filter(p => p.diff <= diff);
+  const band = Math.max(1, Math.min(maxDifficulty, 4));
+  const cap = 1000;
+  const intOK = (arr) => arr.every(n => Number.isInteger(n) && n > 0 && n <= cap);
 
-  const pattern = patterns[Math.floor(Math.random() * patterns.length)];
-  const { step } = pattern;
+  const buildResult = (sequence, correct, ruleLabel, diff, distGap = 2) => {
+    const shown = new Set(sequence);
+    if (shown.has(correct) || correct < 1 || !Number.isInteger(correct)) return null;
+    const distSet = new Set();
+    [correct - 1, correct + 1, correct - 2, correct + 2, correct + distGap, correct - distGap].forEach(v => {
+      if (Number.isInteger(v) && v > 0 && v !== correct && !shown.has(v)) distSet.add(v);
+    });
+    const distractors = shuffle([...distSet]).slice(0, 3);
+    let fillN = 1;
+    while (distractors.length < 3) {
+      const filler = correct + 3 + fillN++;
+      if (!distractors.includes(filler) && !shown.has(filler)) distractors.push(filler);
+    }
+    return { id: null, type: "number_sequence", sequence, correct, options: shuffle([correct, ...distractors]), rule: ruleLabel, difficulty: diff };
+  };
 
-  // Choose start so terms[0..4] are all positive
-  // For positive step: start >= 1, max kept reasonable
-  // For negative step: start >= -4*step + 1 (ensures terms[4] >= 1)
-  const minStart = step < 0 ? -4 * step + 1 : 1;
-  const maxStart = step > 0 ? Math.min(99, 999 - 4 * step) : 99;
-  const start = minStart + Math.floor(Math.random() * Math.min(50, maxStart - minStart + 1));
+  const genArith = (diff) => {
+    const all = [
+      { rule:"+2", step:2, d:1 }, { rule:"+3", step:3, d:1 }, { rule:"+5", step:5, d:1 },
+      { rule:"+10", step:10, d:1 }, { rule:"−2", step:-2, d:1 }, { rule:"−3", step:-3, d:1 },
+      { rule:"+6", step:6, d:2 }, { rule:"+7", step:7, d:2 }, { rule:"+9", step:9, d:2 },
+      { rule:"−4", step:-4, d:2 }, { rule:"−5", step:-5, d:2 },
+    ].filter(p => p.d <= diff);
+    const p = all[Math.floor(Math.random() * all.length)];
+    const { step } = p;
+    const minStart = step < 0 ? -4 * step + 1 : 1;
+    const maxStart = step > 0 ? Math.min(99, 999 - 4 * step) : 99;
+    const start = minStart + Math.floor(Math.random() * Math.min(50, maxStart - minStart + 1));
+    const terms = [0,1,2,3,4].map(i => start + i * step);
+    if (!intOK(terms)) return null;
+    return buildResult(terms.slice(0, 4), terms[4], p.rule, p.d, Math.abs(step));
+  };
 
-  const terms = [0, 1, 2, 3, 4].map(i => start + i * step);
-  const sequence = terms.slice(0, 4);
-  const correct = terms[4];
+  const genGeom = (diff) => {
+    const patterns = diff === 1
+      ? [{ rule:"×2", factor:2 }, { rule:"×3", factor:3 }]
+      : [{ rule:"×2", factor:2 }, { rule:"×3", factor:3 }, { rule:"÷2", factor:0.5 }];
+    for (let t = 0; t < 12; t++) {
+      const p = patterns[Math.floor(Math.random() * patterns.length)];
+      const start = p.factor < 1
+        ? 16 * (1 + Math.floor(Math.random() * 4))
+        : 1 + Math.floor(Math.random() * 5);
+      const terms = [0,1,2,3,4].map(i => start * Math.pow(p.factor, i));
+      if (!intOK(terms)) continue;
+      const r = buildResult(terms.slice(0, 4), terms[4], p.rule, diff);
+      if (r) return r;
+    }
+    return null;
+  };
 
-  // Distractors: plausible values near correct — exclude correct, negatives, and already-shown terms
-  const gap = Math.abs(step);
-  const shownTerms = new Set(terms.slice(0, 4));
-  const distCandidates = [-2, -1, 1, 2]
-    .map(d => correct + d * gap)
-    .concat([correct + 1, correct - 1])
-    .filter(d => d !== correct && d > 0 && !shownTerms.has(d))
-    .map(d => Math.round(d));
-  const distractors = shuffle([...new Set(distCandidates)]).slice(0, 3);
+  const genAlt = () => {
+    for (let t = 0; t < 15; t++) {
+      const x = 2 + Math.floor(Math.random() * 4);
+      let y = 2 + Math.floor(Math.random() * 5);
+      if (y === x) y += 1;
+      const start = 1 + Math.floor(Math.random() * 5);
+      const steps = [x, y, x, y, x];
+      const terms = [start];
+      for (let i = 0; i < 5; i++) terms.push(terms[terms.length - 1] + steps[i]);
+      if (!intOK(terms)) continue;
+      const r = buildResult(terms.slice(0, 5), terms[5], `+${x} +${y} alternating`, 2);
+      if (r) return r;
+    }
+    return null;
+  };
 
-  return { id: null, type: "number_sequence", sequence, correct, options: shuffle([correct, ...distractors]), rule: pattern.rule, difficulty: pattern.diff };
+  const genIncDiff = () => {
+    for (let t = 0; t < 15; t++) {
+      const base = 2 + Math.floor(Math.random() * 3) * 2;
+      const incr = 2;
+      const start = 1 + Math.floor(Math.random() * 5);
+      const terms = [start];
+      let d = base;
+      for (let i = 0; i < 5; i++) { terms.push(terms[terms.length - 1] + d); d += incr; }
+      if (!intOK(terms)) continue;
+      const r = buildResult(terms.slice(0, 5), terms[5], `+${base}, +${base+incr}, +${base+2*incr}…`, 3);
+      if (r) return r;
+    }
+    return null;
+  };
+
+  const genInter = (diff) => {
+    for (let t = 0; t < 20; t++) {
+      let seqA, seqB, rule;
+      if (diff === 3) {
+        const sA = 2 + Math.floor(Math.random() * 3);
+        const sB = 5 + Math.floor(Math.random() * 5);
+        seqA = [sA, sA*2, sA*4, sA*8];
+        seqB = [sB, sB*2, sB*4, sB*8];
+        rule = "two interleaved ×2 sequences";
+      } else {
+        const stepA = 2 + Math.floor(Math.random() * 4);
+        const sA = 1 + Math.floor(Math.random() * 5);
+        const sB = 2 + Math.floor(Math.random() * 3);
+        seqA = [sA, sA+stepA, sA+2*stepA, sA+3*stepA];
+        seqB = [sB, sB*2, sB*4, sB*8];
+        rule = `interleaved +${stepA} and ×2`;
+      }
+      const terms = [seqA[0], seqB[0], seqA[1], seqB[1], seqA[2], seqB[2], seqA[3]];
+      if (!intOK(terms)) continue;
+      const r = buildResult(terms.slice(0, 6), terms[6], rule, diff);
+      if (r) return r;
+    }
+    return null;
+  };
+
+  const genMixAlt = () => {
+    for (let t = 0; t < 20; t++) {
+      const n = 2 + Math.floor(Math.random() * 4);
+      const start = 1 + Math.floor(Math.random() * 4);
+      const terms = [start];
+      let cur = start;
+      const ops = ["+","*","+","*","+"];
+      for (let i = 0; i < 5; i++) { cur = ops[i] === "+" ? cur + n : cur * 2; terms.push(cur); }
+      if (!intOK(terms)) continue;
+      const r = buildResult(terms.slice(0, 5), terms[5], `+${n}, ×2 alternating`, 4);
+      if (r) return r;
+    }
+    return null;
+  };
+
+  const families = [
+    { gen: () => genArith(Math.min(2, band)),  d: 1 },
+    { gen: () => genGeom(Math.min(2, band)),   d: 1 },
+    { gen: genAlt,                              d: 2 },
+    { gen: genIncDiff,                          d: 3 },
+    { gen: () => genInter(3),                   d: 3 },
+    { gen: genMixAlt,                           d: 4 },
+    { gen: () => genInter(4),                   d: 4 },
+  ].filter(f => f.d <= band);
+
+  for (let i = 0; i < 8; i++) {
+    const f = families[Math.floor(Math.random() * families.length)];
+    const out = f.gen();
+    if (out) return out;
+  }
+  return genArith(1) || { id:null, type:"number_sequence", sequence:[2,4,6,8], correct:10, options:shuffle([10,12,8,11]), rule:"+2", difficulty:1 };
+}
+
+// ─── LETTERS = NUMBERS ARITHMETIC ─────────────────────────────────────────────
+// A=1..J=10 substitution. Band 1: single op. Band 2: two ops LTR. Band 3: BIDMAS + optional brackets. Band 4: nested brackets.
+function lettersNumbersGenerator(maxDifficulty) {
+  const band = Math.max(1, Math.min(maxDifficulty, 4));
+  const letters = ["A","B","C","D","E","F","G","H","I","J"];
+  const valOf = (L) => letters.indexOf(L) + 1;
+  const evalExpr = (str) => {
+    let s = str;
+    letters.forEach(L => { s = s.replace(new RegExp(L, 'g'), valOf(L)); });
+    s = s.replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-');
+    try { return Function(`"use strict"; return (${s})`)(); }
+    catch { return null; }
+  };
+  const pick = (n, range) => shuffle(letters.slice(0, range)).slice(0, n);
+  const randOp = () => ["+","−","×","÷"][Math.floor(Math.random() * 4)];
+
+  const tryGen = () => {
+    if (band === 1) {
+      const [a, b] = pick(2, 5);
+      const op = ["+","−","×"][Math.floor(Math.random() * 3)];
+      const expr = op === "−"
+        ? (valOf(a) > valOf(b) ? `${a} − ${b}` : `${b} − ${a}`)
+        : `${a} ${op} ${b}`;
+      const r = evalExpr(expr);
+      if (Number.isInteger(r) && r >= 1 && r <= 15) return { expr, r };
+    } else if (band === 2) {
+      const [a, b, c] = pick(3, 6);
+      const expr = `${a} ${randOp()} ${b} ${randOp()} ${c}`;
+      const r = evalExpr(expr);
+      if (Number.isInteger(r) && r >= 1 && r <= 25) return { expr, r };
+    } else if (band === 3) {
+      const [a, b, c, d] = pick(4, 8);
+      const useBracket = Math.random() < 0.6;
+      const expr = useBracket
+        ? `(${a} ${randOp()} ${b}) ${randOp()} ${c} ${randOp()} ${d}`
+        : `${a} ${randOp()} ${b} ${randOp()} ${c} ${randOp()} ${d}`;
+      const r = evalExpr(expr);
+      if (Number.isInteger(r) && r >= 1 && r <= 50) return { expr, r };
+    } else {
+      const [a, b, c, d] = pick(4, 10);
+      const expr = `(${a} ${randOp()} ${b}) ${randOp()} (${c} ${randOp()} ${d})`;
+      const r = evalExpr(expr);
+      if (Number.isInteger(r) && r >= 1 && r <= 100) return { expr, r };
+    }
+    return null;
+  };
+
+  let attempt = null;
+  for (let i = 0; i < 50 && !attempt; i++) attempt = tryGen();
+  if (!attempt) attempt = { expr: "A + B", r: 3 };
+  const { expr, r } = attempt;
+
+  const pool = [r-3, r-2, r-1, r+1, r+2, r+3].filter(x => x >= 1 && x !== r);
+  const distractors = shuffle(pool).slice(0, 3);
+  while (distractors.length < 3) distractors.push(r + 4 + distractors.length);
+
+  return {
+    id: null,
+    type: "letters_numbers",
+    rule: "A=1, B=2, C=3, D=4, E=5, F=6, G=7, H=8, I=9, J=10",
+    expression: expr,
+    correct: r,
+    options: shuffle([r, ...distractors]),
+    difficulty: band,
+  };
+}
+
+// ─── NUMBER BRACKET PUZZLES ───────────────────────────────────────────────────
+// 2 worked examples + 1 to solve. inner = f(outer1, outer2). Rule family scales with band.
+function numberBracketGenerator(maxDifficulty) {
+  const band = Math.max(1, Math.min(maxDifficulty, 4));
+  const rulesByBand = {
+    1: [
+      { key:"mul", apply:(a,b) => a*b,                 label:"a × b",        commutative: true },
+      { key:"add", apply:(a,b) => a+b,                 label:"a + b",        commutative: true },
+    ],
+    2: [
+      { key:"addmul2", apply:(a,b) => (a+b)*2,         label:"(a + b) × 2",  commutative: true },
+      { key:"sqsub",   apply:(a,b) => a*a - b,         label:"a² − b",       commutative: false },
+      { key:"mulplus", apply:(a,b) => a*b + a,         label:"a × b + a",    commutative: false },
+    ],
+    3: [
+      { key:"sumsq",   apply:(a,b) => a*a + b*b,       label:"a² + b²",      commutative: true },
+      { key:"diffsq",  apply:(a,b) => (a-b)*(a-b),     label:"(a − b)²",     commutative: true },
+      { key:"sqmul",   apply:(a,b) => a*a*b,           label:"a² × b",       commutative: false },
+    ],
+    4: [
+      { key:"sqplus2k",apply:(a,b) => a*a + 2*b,       label:"a² + 2b",      commutative: false },
+      { key:"sumsqd2", apply:(a,b) => ((a+b)*(a+b))/2, label:"(a + b)² ÷ 2", commutative: true },
+      { key:"cubesub", apply:(a,b) => a*a*a - b,       label:"a³ − b",       commutative: false },
+    ],
+  };
+  const bandRules = rulesByBand[band];
+  const cap = { 1:100, 2:100, 3:200, 4:300 }[band];
+  const outerMax = band === 4 ? 7 : 9;
+  const randOuter = () => 2 + Math.floor(Math.random() * (outerMax - 1));
+
+  const tryGen = () => {
+    const rule = bandRules[Math.floor(Math.random() * bandRules.length)];
+    for (let t = 0; t < 30; t++) {
+      const pairs = [[randOuter(), randOuter()], [randOuter(), randOuter()], [randOuter(), randOuter()]];
+      const key = (p) => `${p[0]},${p[1]}`;
+      if (new Set(pairs.map(key)).size < 3) continue;
+      const inners = pairs.map(([a,b]) => rule.apply(a, b));
+      if (!inners.every(n => Number.isInteger(n) && n > 0 && n <= cap)) continue;
+      // Ambiguity guard: no other rule in same band fits both worked examples
+      const ambiguous = bandRules.some(r2 =>
+        r2.key !== rule.key &&
+        r2.apply(pairs[0][0], pairs[0][1]) === inners[0] &&
+        r2.apply(pairs[1][0], pairs[1][1]) === inners[1]
+      );
+      if (ambiguous) continue;
+      return { rule, pairs, inners };
+    }
+    return null;
+  };
+
+  let attempt = null;
+  for (let i = 0; i < 5 && !attempt; i++) attempt = tryGen();
+  if (!attempt) attempt = {
+    rule: rulesByBand[0] || { key:"mul", apply:(a,b)=>a*b, label:"a × b", commutative:true },
+    pairs: [[3,6],[4,5],[3,4]],
+    inners: [18, 20, 12],
+  };
+
+  const { rule, pairs, inners } = attempt;
+  const correct = inners[2];
+  const [a, b] = pairs[2];
+  const distSet = new Set();
+  if (!rule.commutative) {
+    const swapped = rule.apply(b, a);
+    if (swapped !== correct && Number.isInteger(swapped) && swapped > 0) distSet.add(swapped);
+  }
+  bandRules.forEach(r2 => {
+    if (r2.key !== rule.key) {
+      const v = r2.apply(a, b);
+      if (v !== correct && Number.isInteger(v) && v > 0 && v <= cap * 2) distSet.add(v);
+    }
+  });
+  [correct-1, correct+1, correct-2, correct+2].forEach(v => {
+    if (v > 0 && v !== correct) distSet.add(v);
+  });
+  const distractors = shuffle([...distSet]).slice(0, 3);
+  while (distractors.length < 3) distractors.push(correct + 5 + distractors.length);
+
+  return {
+    id: null,
+    type: "number_bracket",
+    examples: [
+      { outer1: pairs[0][0], outer2: pairs[0][1], inner: inners[0] },
+      { outer1: pairs[1][0], outer2: pairs[1][1], inner: inners[1] },
+      { outer1: pairs[2][0], outer2: pairs[2][1], inner: null },
+    ],
+    rule: rule.label,
+    correct,
+    options: shuffle([correct, ...distractors]),
+    difficulty: band,
+  };
+}
+
+// ─── NUMBER EQUATION COMPLETION ───────────────────────────────────────────────
+// LHS = RHS with ? as the missing operand. Band 3+ uses BIDMAS; band 4 uses brackets.
+function equationCompletionGenerator(maxDifficulty) {
+  const band = Math.max(1, Math.min(maxDifficulty, 4));
+  const range = { 1:20, 2:25, 3:50, 4:100 }[band];
+  const randSmall = () => 1 + Math.floor(Math.random() * 9);
+  const applyOp = (a, op, b) => {
+    if (op === "+") return a + b;
+    if (op === "−") return a - b;
+    if (op === "×") return a * b;
+    if (op === "÷") return b !== 0 ? a / b : NaN;
+    return NaN;
+  };
+  const evalLTR = (toks) => {
+    let v = toks[0];
+    for (let i = 1; i < toks.length; i += 2) v = applyOp(v, toks[i], toks[i+1]);
+    return v;
+  };
+  const evalBidmas = (str) => {
+    const s = str.replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-');
+    try { return Function(`"use strict"; return (${s})`)(); }
+    catch { return NaN; }
+  };
+  const randSimpleOp = () => ["+","−"][Math.floor(Math.random() * 2)];
+  const randAnyOp = () => ["+","−","×","÷"][Math.floor(Math.random() * 4)];
+
+  const tryGen = () => {
+    if (band === 1) {
+      for (let t = 0; t < 30; t++) {
+        const a = randSmall(), b = randSmall(), c = randSmall();
+        const op1 = randSimpleOp(), op2 = randSimpleOp();
+        const lhs = applyOp(a, op1, b);
+        if (!Number.isInteger(lhs) || lhs < 1 || lhs > range) continue;
+        const answer = op2 === "+" ? lhs - c : c - lhs;
+        if (!Number.isInteger(answer) || answer < 1 || answer > range) continue;
+        return { lhs: `${a} ${op1} ${b}`, rhs: `${c} ${op2} ?`, correct: answer };
+      }
+      return null;
+    }
+    if (band === 2) {
+      for (let t = 0; t < 40; t++) {
+        const a = randSmall(), b = randSmall(), c = randSmall();
+        const d = randSmall(), e = randSmall();
+        const op1 = randSimpleOp(), op2 = randSimpleOp(), op3 = randSimpleOp(), op4 = randSimpleOp();
+        const lhsV = evalLTR([a, op1, b, op2, c]);
+        if (!Number.isInteger(lhsV) || lhsV < 1 || lhsV > range) continue;
+        const rhsHead = applyOp(d, op3, e);
+        if (!Number.isInteger(rhsHead) || rhsHead < 1) continue;
+        const answer = op4 === "+" ? lhsV - rhsHead : rhsHead - lhsV;
+        if (!Number.isInteger(answer) || answer < 1 || answer > range) continue;
+        return { lhs: `${a} ${op1} ${b} ${op2} ${c}`, rhs: `${d} ${op3} ${e} ${op4} ?`, correct: answer };
+      }
+      return null;
+    }
+    if (band === 3) {
+      for (let t = 0; t < 50; t++) {
+        const a = randSmall(), b = randSmall(), c = randSmall();
+        const op1 = randAnyOp(), op2 = randAnyOp();
+        const lhsStr = `${a} ${op1} ${b} ${op2} ${c}`;
+        const lhsV = evalBidmas(lhsStr);
+        if (!Number.isInteger(lhsV) || lhsV < 1 || lhsV > range) continue;
+        const d = randSmall(), e = randSmall();
+        const op3 = randAnyOp(), op4 = randSimpleOp();
+        const rhsHead = evalBidmas(`${d} ${op3} ${e}`);
+        if (!Number.isInteger(rhsHead) || rhsHead < 1) continue;
+        const answer = op4 === "+" ? lhsV - rhsHead : rhsHead - lhsV;
+        if (!Number.isInteger(answer) || answer < 1 || answer > range) continue;
+        return { lhs: lhsStr, rhs: `${d} ${op3} ${e} ${op4} ?`, correct: answer };
+      }
+      return null;
+    }
+    for (let t = 0; t < 50; t++) {
+      const a = randSmall(), b = randSmall(), c = randSmall();
+      const op1 = randSimpleOp();
+      const op2 = ["×","÷"][Math.floor(Math.random() * 2)];
+      const lhsStr = `(${a} ${op1} ${b}) ${op2} ${c}`;
+      const lhsV = evalBidmas(lhsStr);
+      if (!Number.isInteger(lhsV) || lhsV < 1 || lhsV > range) continue;
+      const d = randSmall(), e = randSmall();
+      if (d === 0) continue;
+      const answer = (lhsV - e) / d;
+      if (!Number.isInteger(answer) || answer < 1 || answer > range) continue;
+      return { lhs: lhsStr, rhs: `${d} × ? + ${e}`, correct: answer };
+    }
+    return null;
+  };
+
+  let attempt = null;
+  for (let i = 0; i < 5 && !attempt; i++) attempt = tryGen();
+  if (!attempt) attempt = { lhs: "5 + 3", rhs: "4 + ?", correct: 4 };
+  const { lhs, rhs, correct } = attempt;
+
+  const pool = new Set();
+  [correct-1, correct+1, correct-2, correct+2, correct-3, correct+3].forEach(v => {
+    if (v >= 1 && v !== correct) pool.add(v);
+  });
+  const distractors = shuffle([...pool]).slice(0, 3);
+  while (distractors.length < 3) distractors.push(correct + 4 + distractors.length);
+
+  return {
+    id: null,
+    type: "equation_completion",
+    lhs, rhs, correct,
+    options: shuffle([correct, ...distractors]),
+    difficulty: band,
+  };
+}
+
+// ─── LETTER CODE ANALOGY ──────────────────────────────────────────────────────
+// AB : CD :: PQ : ? — letters shift by consistent rule. Wraparound enabled (Z+1 = A).
+function letterCodeAnalogyGenerator(maxDifficulty) {
+  const band = Math.max(1, Math.min(maxDifficulty, 4));
+  const letterAt = (n) => String.fromCharCode(65 + ((n % 26) + 26) % 26);
+  const codeOf = (L) => L.charCodeAt(0) - 65;
+  const shift = (L, n) => letterAt(codeOf(L) + n);
+  const randL = () => letterAt(Math.floor(Math.random() * 26));
+
+  const tryGen = () => {
+    if (band === 1) {
+      const s = 1 + Math.floor(Math.random() * 4);
+      const dir = Math.random() < 0.85 ? 1 : -1;
+      const a = randL(), b = randL(), p = randL(), q = randL();
+      return { pair1:[a,b], pair2:[shift(a,s*dir),shift(b,s*dir)], pair3:[p,q], correct:[shift(p,s*dir),shift(q,s*dir)], rule:`both ${dir>0?"+":"−"}${s}` };
+    }
+    if (band === 2) {
+      let s1 = 1 + Math.floor(Math.random() * 5);
+      let s2 = 1 + Math.floor(Math.random() * 5);
+      while (s2 === s1) s2 = 1 + Math.floor(Math.random() * 5);
+      const a = randL(), b = randL(), p = randL(), q = randL();
+      return { pair1:[a,b], pair2:[shift(a,s1),shift(b,s2)], pair3:[p,q], correct:[shift(p,s1),shift(q,s2)], rule:`L1 +${s1}, L2 +${s2}` };
+    }
+    if (band === 3) {
+      const s1 = 1 + Math.floor(Math.random() * 4);
+      const s2 = 1 + Math.floor(Math.random() * 4);
+      const a = randL(), b = randL(), p = randL(), q = randL();
+      return { pair1:[a,b], pair2:[shift(a,s1),shift(b,-s2)], pair3:[p,q], correct:[shift(p,s1),shift(q,-s2)], rule:`L1 +${s1}, L2 −${s2}` };
+    }
+    if (Math.random() < 0.5) {
+      const s = 1 + Math.floor(Math.random() * 4);
+      const dir = Math.random() < 0.7 ? 1 : -1;
+      const a = randL(), b = randL(), c = randL(), p = randL(), q = randL(), r = randL();
+      return { pair1:[a,b,c], pair2:[shift(a,s*dir),shift(b,s*dir),shift(c,s*dir)], pair3:[p,q,r], correct:[shift(p,s*dir),shift(q,s*dir),shift(r,s*dir)], rule:`all ${dir>0?"+":"−"}${s}`, threeLetter:true };
+    } else {
+      const s = 1 + Math.floor(Math.random() * 3);
+      const dir = Math.random() < 0.7 ? 1 : -1;
+      const a = randL(), b = randL(), p = randL(), q = randL();
+      return { pair1:[a,b], pair2:[shift(b,s*dir),shift(a,s*dir)], pair3:[p,q], correct:[shift(q,s*dir),shift(p,s*dir)], rule:`reverse, then ${dir>0?"+":"−"}${s}` };
+    }
+  };
+
+  let attempt = null;
+  for (let i = 0; i < 30 && !attempt; i++) attempt = tryGen();
+  if (!attempt) attempt = { pair1:["A","B"], pair2:["C","D"], pair3:["P","Q"], correct:["R","S"], rule:"both +2" };
+
+  const { pair1, pair2, pair3, correct, rule, threeLetter } = attempt;
+  const correctStr = correct.join("");
+  const distSet = new Set();
+
+  const lastIdx = correct.length - 1;
+  const a1 = [...correct]; a1[lastIdx] = shift(a1[lastIdx], 1);
+  if (a1.join("") !== correctStr) distSet.add(a1.join(""));
+  const a2 = [...correct]; a2[lastIdx] = shift(a2[lastIdx], -1);
+  if (a2.join("") !== correctStr) distSet.add(a2.join(""));
+  const a3 = [...correct]; a3[0] = shift(a3[0], 1);
+  if (a3.join("") !== correctStr) distSet.add(a3.join(""));
+  const a4 = [...correct]; a4[0] = shift(a4[0], -1);
+  if (a4.join("") !== correctStr) distSet.add(a4.join(""));
+  if (!threeLetter && correct.length === 2) {
+    const sw = [correct[1], correct[0]].join("");
+    if (sw !== correctStr) distSet.add(sw);
+  }
+
+  const distractors = shuffle([...distSet]).slice(0, 3);
+  let fill = 2;
+  while (distractors.length < 3) {
+    const filler = correct.map(L => shift(L, fill++)).join("");
+    if (filler !== correctStr && !distractors.includes(filler)) distractors.push(filler);
+  }
+
+  return {
+    id: null,
+    type: "letter_code_analogy",
+    pair1, pair2, pair3,
+    correct: correctStr,
+    options: shuffle([correctStr, ...distractors]),
+    rule,
+    difficulty: band,
+  };
 }
 
 // ─── DOMAIN AUTO-ROTATION ─────────────────────────────────────────────────────
@@ -2253,6 +2704,10 @@ const css = `
   .badge-oddoneout { background:var(--blue); color:white; }
   .badge-letterseq { background:#0f766e; color:white; }
   .badge-numseq { background:#b45309; color:white; }
+  .badge-lettersnums { background:#7c3aed; color:white; }
+  .badge-numbracket { background:#0891b2; color:white; }
+  .badge-equation { background:#dc2626; color:white; }
+  .badge-letteranalogy { background:#65a30d; color:white; }
   .q-word { font-family:'Fraunces',serif; font-size:30px; font-weight:700; letter-spacing:-0.5px; margin-bottom:0; flex:1; }
   .q-prompt { font-size:13px; color:rgba(255,255,255,0.6); margin-bottom:8px; }
   .q-clue { font-family:'Fraunces',serif; font-size:17px; font-weight:600; color:white; font-style:italic; line-height:1.5; display:block; }
@@ -2438,6 +2893,46 @@ const css = `
     color:rgba(255,255,255,0.4); border-bottom:2px solid rgba(255,255,255,0.4);
     min-width:40px; display:inline-block; text-align:center;
   }
+
+  /* VR EQUATION / EXPRESSION DISPLAY (Letters=Numbers, Equation Completion) */
+  .vr-equation-display {
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    font-family:'Fraunces',serif; font-size:24px; font-weight:700;
+    color:white; margin-bottom:8px; margin-top:4px; line-height:1.3;
+  }
+  .vr-rule-line {
+    font-size:13px; color:rgba(255,255,255,0.65); margin-bottom:8px; line-height:1.4;
+    font-family:'DM Sans',sans-serif; font-weight:500;
+  }
+  .vr-eq-blank {
+    font-family:'Fraunces',serif; font-size:24px; font-weight:700;
+    color:var(--gold); border-bottom:2px solid var(--gold);
+    min-width:36px; display:inline-block; text-align:center; padding:0 4px;
+  }
+
+  /* VR NUMBER BRACKET DISPLAY */
+  .vr-bracket-examples {
+    display:flex; flex-direction:column; gap:6px; margin-bottom:8px; margin-top:4px;
+  }
+  .vr-bracket-row {
+    display:flex; align-items:center; gap:4px;
+    font-family:'Fraunces',serif; font-size:22px; font-weight:700; color:white;
+  }
+  .vr-bracket-row .b-outer { color:white; padding:0 2px; }
+  .vr-bracket-row .b-inner { color:var(--gold); padding:0 2px; }
+  .vr-bracket-row .b-paren { color:rgba(255,255,255,0.5); font-weight:600; }
+  .vr-bracket-row .b-blank {
+    color:var(--gold); border-bottom:2px solid var(--gold);
+    min-width:32px; display:inline-block; text-align:center; padding:0 4px;
+  }
+
+  /* VR LETTER CODE ANALOGY DISPLAY */
+  .vr-codepair-display {
+    display:flex; align-items:center; flex-wrap:wrap; gap:8px;
+    font-family:'Fraunces',serif; font-size:22px; font-weight:700; color:white;
+    margin-bottom:8px; margin-top:4px; line-height:1.3;
+  }
+  .vr-codepair { letter-spacing:1px; }
 
   /* PREVIEW PANEL */
   .preview-select {
@@ -2842,12 +3337,163 @@ function VRSequence({ q, selected, onAnswer }) {
       <div className="options-grid">
         {q.options.map(opt => {
           let cls = "opt-card";
-          if (selected) {
+          if (selected !== null && selected !== undefined) {
             if (opt === q.correct) cls += " correct";
             else if (opt === selected) cls += " wrong";
           } else { cls += " clickable"; }
           return (
-            <div key={opt} className={cls} onClick={() => !selected && onAnswer(String(opt))}>
+            <div key={opt} className={cls} onClick={() => (selected === null || selected === undefined) && onAnswer(opt)}>
+              <div className="opt-top"><span className="opt-word">{opt}</span></div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// ─── VR LETTERS = NUMBERS ─────────────────────────────────────────────────────
+function VRLettersNumbers({ q, selected, onAnswer }) {
+  return (
+    <>
+      <div className="q-header">
+        <div className="q-header-top">
+          <div className="q-word" style={{ fontSize:15, fontFamily:"inherit", fontWeight:600, letterSpacing:0 }}>Use the code to find the answer:</div>
+          <div className="q-badge badge-lettersnums">Letters=Nums</div>
+        </div>
+        <div className="vr-rule-line">{q.rule}</div>
+        <div className="vr-equation-display">
+          <span>{q.expression}</span>
+          <span className="vr-seq-sep">=</span>
+          <span className="vr-eq-blank">?</span>
+        </div>
+      </div>
+      <div className="options-grid">
+        {q.options.map(opt => {
+          let cls = "opt-card";
+          if (selected !== null && selected !== undefined) {
+            if (opt === q.correct) cls += " correct";
+            else if (opt === selected) cls += " wrong";
+          } else { cls += " clickable"; }
+          return (
+            <div key={opt} className={cls} onClick={() => (selected === null || selected === undefined) && onAnswer(opt)}>
+              <div className="opt-top"><span className="opt-word">{opt}</span></div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// ─── VR NUMBER BRACKET ────────────────────────────────────────────────────────
+function VRNumberBracket({ q, selected, onAnswer }) {
+  return (
+    <>
+      <div className="q-header">
+        <div className="q-header-top">
+          <div className="q-word" style={{ fontSize:15, fontFamily:"inherit", fontWeight:600, letterSpacing:0 }}>Find the rule, then solve:</div>
+          <div className="q-badge badge-numbracket">Bracket</div>
+        </div>
+        <div className="vr-bracket-examples">
+          {q.examples.map((ex, i) => (
+            <div key={i} className="vr-bracket-row">
+              <span className="b-outer">{ex.outer1}</span>
+              <span className="b-paren">(</span>
+              {ex.inner === null ? <span className="b-blank">?</span> : <span className="b-inner">{ex.inner}</span>}
+              <span className="b-paren">)</span>
+              <span className="b-outer">{ex.outer2}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="options-grid">
+        {q.options.map(opt => {
+          let cls = "opt-card";
+          if (selected !== null && selected !== undefined) {
+            if (opt === q.correct) cls += " correct";
+            else if (opt === selected) cls += " wrong";
+          } else { cls += " clickable"; }
+          return (
+            <div key={opt} className={cls} onClick={() => (selected === null || selected === undefined) && onAnswer(opt)}>
+              <div className="opt-top"><span className="opt-word">{opt}</span></div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// ─── VR EQUATION COMPLETION ───────────────────────────────────────────────────
+function VREquationCompletion({ q, selected, onAnswer }) {
+  // Replace ? on whichever side it appears with the visual blank
+  const renderSide = (s) => s.split("?").map((part, i, arr) => (
+    <Fragment key={i}>
+      <span>{part}</span>
+      {i < arr.length - 1 && <span className="vr-eq-blank">?</span>}
+    </Fragment>
+  ));
+  return (
+    <>
+      <div className="q-header">
+        <div className="q-header-top">
+          <div className="q-word" style={{ fontSize:15, fontFamily:"inherit", fontWeight:600, letterSpacing:0 }}>Find the missing number:</div>
+          <div className="q-badge badge-equation">Equation</div>
+        </div>
+        <div className="vr-equation-display">
+          {renderSide(q.lhs)}
+          <span className="vr-seq-sep">=</span>
+          {renderSide(q.rhs)}
+        </div>
+      </div>
+      <div className="options-grid">
+        {q.options.map(opt => {
+          let cls = "opt-card";
+          if (selected !== null && selected !== undefined) {
+            if (opt === q.correct) cls += " correct";
+            else if (opt === selected) cls += " wrong";
+          } else { cls += " clickable"; }
+          return (
+            <div key={opt} className={cls} onClick={() => (selected === null || selected === undefined) && onAnswer(opt)}>
+              <div className="opt-top"><span className="opt-word">{opt}</span></div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// ─── VR LETTER CODE ANALOGY ───────────────────────────────────────────────────
+function VRLetterCodeAnalogy({ q, selected, onAnswer }) {
+  const fmt = (pair) => pair.join("");
+  return (
+    <>
+      <div className="q-header">
+        <div className="q-header-top">
+          <div className="q-word" style={{ fontSize:15, fontFamily:"inherit", fontWeight:600, letterSpacing:0 }}>Complete the letter pair:</div>
+          <div className="q-badge badge-letteranalogy">Code</div>
+        </div>
+        <div className="vr-codepair-display">
+          <span className="vr-codepair">{fmt(q.pair1)}</span>
+          <span className="vr-sep">:</span>
+          <span className="vr-codepair">{fmt(q.pair2)}</span>
+          <span className="vr-sep">::</span>
+          <span className="vr-codepair">{fmt(q.pair3)}</span>
+          <span className="vr-sep">:</span>
+          <span className="vr-blank">___</span>
+        </div>
+      </div>
+      <div className="options-grid">
+        {q.options.map(opt => {
+          let cls = "opt-card";
+          if (selected !== null && selected !== undefined) {
+            if (opt === q.correct) cls += " correct";
+            else if (opt === selected) cls += " wrong";
+          } else { cls += " clickable"; }
+          return (
+            <div key={opt} className={cls} onClick={() => (selected === null || selected === undefined) && onAnswer(opt)}>
               <div className="opt-top"><span className="opt-word">{opt}</span></div>
             </div>
           );
@@ -2861,11 +3507,15 @@ function VRSequence({ q, selected, onAnswer }) {
 function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficulty = 5 }) {
   const [queue] = useState(() => {
     const due = getDueVRQuestions(vrLeitnerBoxes, maxDifficulty).slice(0, 12);
-    // Inject generated sequences alongside Leitner-due items (not tracked in Leitner)
-    const seqCount = Math.max(1, Math.min(2, Math.floor(due.length / 4)));
+    // Inject 1 of each of the 6 generated VR types alongside Leitner-due items.
+    // Generated items have id:null → never tracked in Leitner (see handleSessionEnd guard).
     const generated = [
-      ...Array.from({ length: seqCount }, () => generateLetterSequence(maxDifficulty)),
-      ...Array.from({ length: seqCount }, () => generateNumberSequence(maxDifficulty)),
+      generateLetterSequence(maxDifficulty),
+      generateNumberSequence(maxDifficulty),
+      lettersNumbersGenerator(maxDifficulty),
+      numberBracketGenerator(maxDifficulty),
+      equationCompletionGenerator(maxDifficulty),
+      letterCodeAnalogyGenerator(maxDifficulty),
     ];
     return shuffle([...due, ...generated]);
   });
@@ -2890,7 +3540,7 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
   }, [idx]);
 
   const handleAnswer = async (opt) => {
-    if (selected) return;
+    if (selected !== null) return;
     const timeMs = Date.now() - t0.current;
     setSelected(opt);
     const q = queue[idx];
@@ -2918,6 +3568,15 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
           user = `Student got a letter sequence wrong: ${q.sequence.join(" ")} → ? Chose "${opt}", correct is "${q.correct}". Rule: ${q.rule}. Explain the pattern in 1 sentence for a 10-year-old.`;
         } else if (q.type === "number_sequence") {
           user = `Student got a number sequence wrong: ${q.sequence.join(", ")} → ? Chose "${opt}", correct is "${q.correct}". Rule: ${q.rule}. Explain the pattern in 1 sentence for a 10-year-old.`;
+        } else if (q.type === "letters_numbers") {
+          user = `Student got a Letters=Numbers question wrong. Code: ${q.rule}. Expression: ${q.expression}. Chose ${opt}, correct is ${q.correct}. Walk through the substitution and BIDMAS step in 1 sentence for a 10-year-old.`;
+        } else if (q.type === "number_bracket") {
+          const exShown = q.examples.slice(0, 2).map(e => `${e.outer1}(${e.inner})${e.outer2}`).join("  ");
+          user = `Student got a number bracket puzzle wrong. Examples: ${exShown}. Rule: ${q.rule}. They saw ${q.examples[2].outer1}(?)${q.examples[2].outer2}, chose ${opt}, correct is ${q.correct}. Explain how the worked examples reveal the rule in 1 sentence for a 10-year-old.`;
+        } else if (q.type === "equation_completion") {
+          user = `Student got an equation completion wrong. ${q.lhs} = ${q.rhs}. Chose ${opt}, correct is ${q.correct}. Show how to evaluate each side and solve for ? in 1 sentence for a 10-year-old.`;
+        } else if (q.type === "letter_code_analogy") {
+          user = `Student got a letter code analogy wrong: ${q.pair1.join("")} : ${q.pair2.join("")} :: ${q.pair3.join("")} : ? Chose "${opt}", correct is "${q.correct}". Rule: ${q.rule}. Explain the shift rule and how to apply it in 1 sentence for a 10-year-old.`;
         } else {
           user = `Student got a question wrong. Chose "${opt}", correct is "${q.correct}". Explain in 1 friendly sentence.`;
         }
@@ -2968,15 +3627,19 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
         <div className="stat-pill"><div className="val">{idx + 1}/{queue.length}</div><div className="lbl">Question</div></div>
         <div className="stat-pill good"><div className="val">{results.filter(r => r.correct).length}</div><div className="lbl">Correct</div></div>
         <div className="stat-pill warn"><div className="val">{results.filter(r => !r.correct).length}</div><div className="lbl">Review</div></div>
-        <div className={`stat-pill ${elapsed < 20 ? "good" : elapsed <= 30 ? "warn" : "slow"}`}><div className="val">{selected ? "✓" : `${elapsed}s`}</div><div className="lbl">Time</div></div>
+        <div className={`stat-pill ${elapsed < 20 ? "good" : elapsed <= 30 ? "warn" : "slow"}`}><div className="val">{selected !== null ? "✓" : `${elapsed}s`}</div><div className="lbl">Time</div></div>
       </div>
       <div className="card">
-        {q.type === "analogy"          && <VRAnalogy   q={q} selected={selected} onAnswer={handleAnswer} />}
-        {q.type === "odd_one_out"      && <VROddOneOut  q={q} selected={selected} onAnswer={handleAnswer} />}
+        {q.type === "analogy"                                              && <VRAnalogy   q={q} selected={selected} onAnswer={handleAnswer} />}
+        {q.type === "odd_one_out"                                          && <VROddOneOut  q={q} selected={selected} onAnswer={handleAnswer} />}
         {(q.type === "antonym_pair" || q.type === "synonym_pair")          && <VRWordPair  q={q} selected={selected} onAnswer={handleAnswer} />}
         {(q.type === "letter_sequence" || q.type === "number_sequence")    && <VRSequence  q={q} selected={selected} onAnswer={handleAnswer} />}
-        {!selected && <div className="hint-row">Tap your answer</div>}
-        {selected && (
+        {q.type === "letters_numbers"                                      && <VRLettersNumbers     q={q} selected={selected} onAnswer={handleAnswer} />}
+        {q.type === "number_bracket"                                       && <VRNumberBracket      q={q} selected={selected} onAnswer={handleAnswer} />}
+        {q.type === "equation_completion"                                  && <VREquationCompletion q={q} selected={selected} onAnswer={handleAnswer} />}
+        {q.type === "letter_code_analogy"                                  && <VRLetterCodeAnalogy  q={q} selected={selected} onAnswer={handleAnswer} />}
+        {selected === null && <div className="hint-row">Tap your answer</div>}
+        {selected !== null && (
           <>
             <div className={`result-block ${isCorrect ? "correct" : "wrong"}`}>
               <div className="result-icon">{isCorrect ? "✓" : "✗"}</div>
@@ -3464,12 +4127,16 @@ function ProfileSelector({ profiles, activeProfileId, leitnerBoxes, onSelect, on
 
 // ─── QUESTION PREVIEW (tutor tab) ─────────────────────────────────────────────
 const VR_PREVIEW_TYPES = [
-  { id:"antonym_pair",    label:"Antonym pair"    },
-  { id:"synonym_pair",    label:"Synonym pair"    },
-  { id:"letter_sequence", label:"Letter sequence" },
-  { id:"number_sequence", label:"Number sequence" },
-  { id:"analogy",         label:"Analogy"         },
-  { id:"odd_one_out",     label:"Odd one out"     },
+  { id:"antonym_pair",        label:"Antonym pair"         },
+  { id:"synonym_pair",        label:"Synonym pair"         },
+  { id:"letter_sequence",     label:"Letter sequence"      },
+  { id:"number_sequence",     label:"Number sequence"      },
+  { id:"letters_numbers",     label:"Letters = Numbers"    },
+  { id:"number_bracket",      label:"Number bracket"       },
+  { id:"equation_completion", label:"Equation completion"  },
+  { id:"letter_code_analogy", label:"Letter code analogy"  },
+  { id:"analogy",             label:"Analogy"              },
+  { id:"odd_one_out",         label:"Odd one out"          },
 ];
 const VOCAB_PREVIEW_TYPES = [
   { id:"synonym",   label:"Synonym"   },
@@ -3522,6 +4189,14 @@ function QuestionPreview({ maxDifficulty }) {
           q = generateLetterSequence(difficulty);
         } else if (qType === "number_sequence") {
           q = generateNumberSequence(difficulty);
+        } else if (qType === "letters_numbers") {
+          q = lettersNumbersGenerator(difficulty);
+        } else if (qType === "number_bracket") {
+          q = numberBracketGenerator(difficulty);
+        } else if (qType === "equation_completion") {
+          q = equationCompletionGenerator(difficulty);
+        } else if (qType === "letter_code_analogy") {
+          q = letterCodeAnalogyGenerator(difficulty);
         } else if (qType === "analogy") {
           const pool = VR_BANK.filter(b => b.type === "analogy" && b.difficulty <= difficulty);
           if (!pool.length) { setError("No analogy items at this difficulty."); return; }
@@ -3563,6 +4238,10 @@ function QuestionPreview({ maxDifficulty }) {
           <div style={{ background:"var(--ink)", borderRadius:"var(--radius-sm) var(--radius-sm) 0 0", padding:"18px 20px 16px" }}>
             {(question.type === "antonym_pair" || question.type === "synonym_pair") && <VRWordPair q={question} selected={question.correct} onAnswer={() => {}} />}
             {(question.type === "letter_sequence" || question.type === "number_sequence") && <VRSequence q={question} selected={question.correct} onAnswer={() => {}} />}
+            {question.type === "letters_numbers" && <VRLettersNumbers q={question} selected={question.correct} onAnswer={() => {}} />}
+            {question.type === "number_bracket" && <VRNumberBracket q={question} selected={question.correct} onAnswer={() => {}} />}
+            {question.type === "equation_completion" && <VREquationCompletion q={question} selected={question.correct} onAnswer={() => {}} />}
+            {question.type === "letter_code_analogy" && <VRLetterCodeAnalogy q={question} selected={question.correct} onAnswer={() => {}} />}
             {question.type === "analogy" && <VRAnalogy q={question} selected={question.correct} onAnswer={() => {}} />}
             {question.type === "odd_one_out" && <VROddOneOut q={question} selected={question.correct} onAnswer={() => {}} />}
           </div>
