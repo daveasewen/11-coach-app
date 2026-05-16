@@ -117,7 +117,14 @@ An AI-enhanced coaching and testing tool for Dave's son (age 10–11) preparing 
 - **QPM on completion screen:** Questions-per-minute calculated from `sessionLog.timeMs` totals, displayed alongside score/correct/review.
 - VERSION bumped to `"1.2b"`
 
-### v1.6 (current — built, Cowork artifact live ✅)
+### v1.7 (current — built, Cowork artifact live ✅)
+- **Difficulty filter:** `getMaxDifficulty(profile)` derives max difficulty from profile age (≤8 → 2, 9 → 3, 10+ → 5). `getDueWords(leitnerBoxes, maxDifficulty)` filters VOCAB_BANK before building due queue. Stats row (Mastered / Due / In bank) all scoped to active band.
+- **Birthdate replaces age:** Profiles now store `birthdate` (ISO date string) instead of `age`. `getProfileAge(profile)` computes current age dynamically — ages up automatically. Backward compatible: falls back to `profile.age` for old profiles.
+- **Profile editing:** ✏️ button on each profile card opens ProfileCreator in edit mode (pre-populated). `handleEditProfile` saves updated profile to storage; if editing the active profile, recomputes `maxDifficulty` immediately.
+- **Age 8–9 word bank added:** 83 new words at difficulty 1–2. 51 words at difficulty 1 (bold, brave, calm, cheerful, curious, gentle, honest, kind, loyal, patient, etc.), 166 at difficulty 2 (admire, anxious, determined, encourage, humble, peculiar, rescue, swift, thoughtful, etc.). **Total bank: 731 words. Age 8–9 band (diff ≤2): 217 words.**
+- **Soft progression noted as future work** — mastery-triggered unlock of next difficulty band. Deferred, saved to memory for discussion before v1.8.
+
+### v1.6 (built, Cowork artifact live ✅)
 - **User profiles:** Profile selector accessible from a pill in the header (avatar + name). Click to switch or create profiles.
 - **Per-user storage prefix:** All Leitner/history/streak data now stored under `11plus:user:<id>:*` keys. Profiles list in `11plus:profiles`. Active profile in `11plus:active-profile`.
 - **Profile creation:** Name input + avatar picker (12 emoji options) + colour picker (8 colours).
@@ -336,11 +343,11 @@ git commit -m "vX.Y — description"
 ### v1.5c — ✅ SHIPPED (Antonym fixes, 💡 gate, DISTRACTOR_DICT 956 entries)
 ### v1.6 — ✅ SHIPPED (User profiles)
 
-### v1.7 — Next priority
+### v1.7.1 — ✅ SHIPPED
+- **Reset progress:** ✏️ → "Reset progress" in profile editor. Two-step confirm. Clears Leitner boxes, session history, and streak for any profile. If resetting the active profile, state resets immediately without page refresh.
+- First piece of the future admin layer.
 
-- **Age band expansion:** difficulty 1–2 words for ages 8–9. The ~85 Exam Ninja gap words filtered as "too simple for 11+" are a ready starting point.
-- **Difficulty filter:** small code change — filter session queue to difficulty band matching the child's age/level. Schema already supports it (`difficulty` field on every word).
-- See roadmap v1.7 for full spec.
+### v1.7 — ✅ SHIPPED
 
 ### Future / not yet built
 - Maths, comprehension, shuffled sentences question banks
@@ -371,9 +378,9 @@ git commit -m "vX.Y — description"
 
 ---
 
-*Handover version: 1.6*
-*App version: v1.6 — built and Cowork artifact live ✅*
-*Next session: v1.7 — Age band expansion (difficulty 1–2 words for age 8–9 siblings/earlier prep). Then v1.8 — New question domains (maths, comprehension).*
+*Handover version: 1.7.1*
+*App version: v1.7.1 — built and Cowork artifact live ✅*
+*Next session: Discuss soft progression (mastery-triggered band unlock) before committing v1.8 scope. Then v1.8 — New question domains (maths, comprehension).*
 *Last updated: May 2026*
 *Progress note: Dave's son's Leitner data has been migrated to the per-user prefixed storage keys. Device-local only — no cloud sync.*
 *Profiles note: Storage keys are now per-user (`11plus:user:<id>:*`). Profile list in `11plus:profiles`. A second user can be added safely via the profile pill in the header.*

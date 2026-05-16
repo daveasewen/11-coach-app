@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "1.6";
+const VERSION = "1.8.0";
 
 const BASELINE = {
   overall: { score: 108, total: 200, pct: 54 },
@@ -27,6 +27,28 @@ const ACTIVE_PROFILE_KEY = "11plus:active-profile";
 const PROFILE_AVATARS = ["🦁","🐯","🦊","🦅","🐬","🦋","🦄","🐉","⭐","🌟","🎯","🚀"];
 const PROFILE_COLOURS = ["#e85d26","#2355a0","#6b3fa0","#2d7a52","#c9963a","#c0392b","#16a085","#8e44ad"];
 
+// Computes current age from a birthdate string (ISO, e.g. "2015-06-20").
+// Falls back to legacy profile.age for profiles created before v1.7.
+function getProfileAge(profile) {
+  if (profile?.birthdate) {
+    const ms = Date.now() - new Date(profile.birthdate).getTime();
+    return Math.floor(ms / (365.25 * 86400000));
+  }
+  return profile?.age ?? null; // backward compat
+}
+
+// Maps profile age → maximum difficulty served in sessions.
+// age ≤ 8 → difficulty ≤ 2 (early-prep band)
+// age 9   → difficulty ≤ 3 (bridging band)
+// age 10+ → difficulty ≤ 5 (full 11+ bank, default)
+// null    → 5 (no restriction — default for old/incomplete profiles)
+function getMaxDifficulty(profile) {
+  const age = getProfileAge(profile);
+  if (!age || age >= 10) return 5;
+  if (age === 9) return 3;
+  return 2;
+}
+
 function makeProfileId() {
   return "u" + Math.random().toString(36).slice(2, 9);
 }
@@ -36,6 +58,7 @@ function getUserStorageKeys(userId) {
     leitnerBoxes:   `11plus:user:${userId}:leitner-boxes-v1`,
     sessionHistory: `11plus:user:${userId}:session-history-v1`,
     streakData:     `11plus:user:${userId}:streak-data-v1`,
+    vrLeitner:      `11plus:user:${userId}:vr-leitner-v1`,
   };
 }
 
@@ -689,9 +712,128 @@ const VOCAB_BANK = [
   { word: "vociferous", definition: "Expressing strong opinions loudly and forcefully", simpleDefinition: "Loud and forceful — making yourself heard at all costs", synonyms: ["loud", "outspoken", "strident", "clamorous"], antonyms: ["quiet", "reserved", "subdued"], difficulty: 4, pos: "adjective", example: "The vociferous protesters blocked the entrance to the building." },
   { word: "voracious", definition: "Consuming or wanting something in great quantities", simpleDefinition: "Wanting and consuming huge amounts — never satisfied", synonyms: ["hungry", "ravenous", "greedy", "insatiable"], antonyms: ["satisfied", "moderate", "content"], difficulty: 3, pos: "adjective", example: "She was a voracious reader who finished a book every two days." },
   { word: "wilful", definition: "Intentional, or stubbornly determined to do what one wants", simpleDefinition: "Done on purpose — or stubbornly insisting on your own way", synonyms: ["deliberate", "intentional", "obstinate", "headstrong"], antonyms: ["accidental", "compliant", "obedient"], difficulty: 3, pos: "adjective", example: "His wilful disregard for the rules infuriated the teacher." },
+
+  // ─── AGE 8–9 WORDS (difficulty 1–2) added v1.7 ───────────────────────────
+  // Difficulty 1 — adjectives
+  { word: "bold", definition: "Brave and confident; not afraid to take risks", simpleDefinition: "Being brave and not scared to try things", synonyms: ["brave", "daring", "fearless", "confident"], antonyms: ["timid", "cowardly", "fearful"], difficulty: 1, pos: "adjective", example: "The bold explorer crossed the raging river." },
+  { word: "brave", definition: "Ready to face danger or pain without showing fear", simpleDefinition: "Not scared to do something difficult or dangerous", synonyms: ["courageous", "bold", "fearless", "daring"], antonyms: ["cowardly", "timid", "fearful"], difficulty: 1, pos: "adjective", example: "The brave girl climbed up to rescue the kite." },
+  { word: "calm", definition: "Not excited or upset; peaceful and relaxed", simpleDefinition: "Quiet and not worried about anything", synonyms: ["peaceful", "serene", "tranquil", "composed"], antonyms: ["agitated", "anxious", "frantic"], difficulty: 1, pos: "adjective", example: "She stayed calm during the loud thunderstorm." },
+  { word: "careless", definition: "Not giving enough attention to what you are doing", simpleDefinition: "Not being careful — making mistakes by not paying attention", synonyms: ["reckless", "negligent", "hasty", "sloppy"], antonyms: ["careful", "cautious", "diligent"], difficulty: 1, pos: "adjective", example: "His careless mistake cost him three marks." },
+  { word: "cheerful", definition: "Noticeably happy and optimistic", simpleDefinition: "Happy and bright — easy to smile", synonyms: ["joyful", "merry", "bright", "upbeat"], antonyms: ["miserable", "gloomy", "sullen"], difficulty: 1, pos: "adjective", example: "She gave a cheerful wave as she left." },
+  { word: "clever", definition: "Quick to understand and learn things", simpleDefinition: "Smart and quick at figuring things out", synonyms: ["smart", "bright", "sharp", "intelligent"], antonyms: ["foolish", "dull", "naive"], difficulty: 1, pos: "adjective", example: "The clever pupil solved the puzzle first." },
+  { word: "cruel", definition: "Causing pain or suffering to others without care", simpleDefinition: "Being mean and wanting to hurt others", synonyms: ["harsh", "brutal", "vicious", "unkind"], antonyms: ["kind", "gentle", "merciful"], difficulty: 1, pos: "adjective", example: "It was cruel to leave the dog in the cold." },
+  { word: "curious", definition: "Eager to know or learn about something", simpleDefinition: "Really wanting to find out about things", synonyms: ["inquisitive", "eager", "interested", "questioning"], antonyms: ["indifferent", "uninterested", "apathetic"], difficulty: 1, pos: "adjective", example: "The curious child opened every drawer." },
+  { word: "dull", definition: "Not interesting or exciting; lacking brightness", simpleDefinition: "Boring and not fun — or not very bright", synonyms: ["boring", "tedious", "dreary", "dim"], antonyms: ["exciting", "vivid", "bright"], difficulty: 1, pos: "adjective", example: "The lesson was so dull that he fell asleep." },
+  { word: "eager", definition: "Strongly wanting to do or have something", simpleDefinition: "Really keen and excited to do something", synonyms: ["keen", "enthusiastic", "avid", "willing"], antonyms: ["reluctant", "indifferent", "unwilling"], difficulty: 1, pos: "adjective", example: "She was eager to start her new project." },
+  { word: "faithful", definition: "Loyal and reliable; staying true to someone", simpleDefinition: "Always there for someone and never letting them down", synonyms: ["loyal", "devoted", "trustworthy", "reliable"], antonyms: ["disloyal", "unfaithful", "treacherous"], difficulty: 1, pos: "adjective", example: "The faithful dog waited by the door all day." },
+  { word: "foolish", definition: "Lacking good sense or judgement; unwise", simpleDefinition: "Silly and not thinking things through properly", synonyms: ["silly", "unwise", "reckless", "absurd"], antonyms: ["wise", "sensible", "clever"], difficulty: 1, pos: "adjective", example: "It was foolish to go out without a coat." },
+  { word: "gentle", definition: "Mild and kind; careful not to hurt anything", simpleDefinition: "Soft and careful — not rough or harsh", synonyms: ["mild", "tender", "soft", "kind"], antonyms: ["rough", "harsh", "violent"], difficulty: 1, pos: "adjective", example: "She was gentle with the baby rabbit." },
+  { word: "grumpy", definition: "Bad-tempered and easily irritated", simpleDefinition: "Moody and easy to annoy — a bit grouchy", synonyms: ["irritable", "sullen", "cross", "moody"], antonyms: ["cheerful", "content", "pleasant"], difficulty: 1, pos: "adjective", example: "He was grumpy before breakfast." },
+  { word: "helpful", definition: "Giving assistance; making things easier for others", simpleDefinition: "Making things better or easier for someone else", synonyms: ["useful", "supportive", "cooperative", "obliging"], antonyms: ["unhelpful", "obstructive", "useless"], difficulty: 1, pos: "adjective", example: "The helpful boy carried her shopping bags." },
+  { word: "honest", definition: "Truthful and fair; not lying or cheating", simpleDefinition: "Always telling the truth and being fair", synonyms: ["truthful", "sincere", "trustworthy", "candid"], antonyms: ["dishonest", "deceitful", "corrupt"], difficulty: 1, pos: "adjective", example: "She was honest about making a mistake." },
+  { word: "idle", definition: "Not working or active; spending time doing nothing useful", simpleDefinition: "Doing nothing and wasting time when you should be busy", synonyms: ["lazy", "inactive", "sluggish", "lethargic"], antonyms: ["industrious", "active", "diligent"], difficulty: 1, pos: "adjective", example: "He sat idle while the others tidied up." },
+  { word: "jealous", definition: "Feeling upset that someone else has something you want", simpleDefinition: "Feeling bad because someone has what you wish you had", synonyms: ["envious", "resentful", "covetous", "bitter"], antonyms: ["content", "satisfied", "grateful"], difficulty: 1, pos: "adjective", example: "She felt jealous of her friend's new bike." },
+  { word: "joyful", definition: "Feeling or expressing great happiness", simpleDefinition: "Really, really happy — full of joy", synonyms: ["happy", "cheerful", "elated", "merry"], antonyms: ["miserable", "sorrowful", "gloomy"], difficulty: 1, pos: "adjective", example: "The children were joyful on the last day of term." },
+  { word: "keen", definition: "Enthusiastic and eager; strongly interested in something", simpleDefinition: "Really interested in something and wanting to do it", synonyms: ["eager", "enthusiastic", "avid", "passionate"], antonyms: ["reluctant", "indifferent", "unenthusiastic"], difficulty: 1, pos: "adjective", example: "He was keen to join the football team." },
+  { word: "kind", definition: "Friendly and generous; caring about the feelings of others", simpleDefinition: "Being nice and caring to people around you", synonyms: ["generous", "caring", "gentle", "compassionate"], antonyms: ["cruel", "unkind", "harsh"], difficulty: 1, pos: "adjective", example: "It was kind of her to share her lunch." },
+  { word: "lazy", definition: "Unwilling to work or use energy", simpleDefinition: "Not wanting to do any work or move around", synonyms: ["idle", "sluggish", "inactive", "lethargic"], antonyms: ["industrious", "energetic", "diligent"], difficulty: 1, pos: "adjective", example: "The lazy cat slept all afternoon in the sun." },
+  { word: "lively", definition: "Full of energy and enthusiasm", simpleDefinition: "Full of life and bouncing with energy", synonyms: ["energetic", "spirited", "vivid", "vibrant"], antonyms: ["dull", "sluggish", "lifeless"], difficulty: 1, pos: "adjective", example: "The lively puppy ran laps around the garden." },
+  { word: "lonely", definition: "Unhappy because you have no company or friends nearby", simpleDefinition: "Feeling sad because no one is with you", synonyms: ["isolated", "solitary", "forsaken", "friendless"], antonyms: ["content", "accompanied", "sociable"], difficulty: 1, pos: "adjective", example: "She felt lonely on her first day at the new school." },
+  { word: "merry", definition: "Cheerful and full of fun and laughter", simpleDefinition: "Happy and full of fun — in a jolly, festive sort of way", synonyms: ["cheerful", "jolly", "festive", "joyful"], antonyms: ["gloomy", "miserable", "sullen"], difficulty: 1, pos: "adjective", example: "They sang merry songs around the bonfire." },
+  { word: "miserable", definition: "Very unhappy and uncomfortable", simpleDefinition: "Really sad and feeling awful", synonyms: ["wretched", "sorrowful", "gloomy", "dejected"], antonyms: ["joyful", "content", "cheerful"], difficulty: 1, pos: "adjective", example: "He was miserable when his pet fish died." },
+  { word: "mysterious", definition: "Difficult to explain or understand; strange and secretive", simpleDefinition: "Strange and puzzling — you can't quite work it out", synonyms: ["strange", "secretive", "puzzling", "peculiar"], antonyms: ["obvious", "clear", "straightforward"], difficulty: 1, pos: "adjective", example: "A mysterious package arrived with no name on it." },
+  { word: "nervous", definition: "Worried and anxious about something that might happen", simpleDefinition: "Feeling wobbly inside because you are worried", synonyms: ["anxious", "worried", "uneasy", "fearful"], antonyms: ["calm", "confident", "relaxed"], difficulty: 1, pos: "adjective", example: "She felt nervous before her piano recital." },
+  { word: "patient", definition: "Able to wait for a long time without becoming annoyed", simpleDefinition: "Being able to wait without getting grumpy", synonyms: ["calm", "tolerant", "enduring", "composed"], antonyms: ["impatient", "anxious", "restless"], difficulty: 1, pos: "adjective", example: "The patient teacher explained it one more time." },
+  { word: "peaceful", definition: "Calm and free from disturbance or conflict", simpleDefinition: "Quiet and calm — no fighting or fuss", synonyms: ["calm", "tranquil", "serene", "gentle"], antonyms: ["turbulent", "chaotic", "violent"], difficulty: 1, pos: "adjective", example: "The lake looked peaceful in the morning light." },
+  { word: "polite", definition: "Having good manners and being respectful to others", simpleDefinition: "Saying please and thank you — being well-mannered", synonyms: ["courteous", "respectful", "mannerly", "civil"], antonyms: ["rude", "impolite", "disrespectful"], difficulty: 1, pos: "adjective", example: "She was always polite to the dinner lady." },
+  { word: "proud", definition: "Feeling pleased and satisfied about something you have done", simpleDefinition: "Feeling really good and pleased about yourself or someone else", synonyms: ["pleased", "satisfied", "content", "confident"], antonyms: ["ashamed", "humble", "embarrassed"], difficulty: 1, pos: "adjective", example: "He was proud of his first swimming badge." },
+  { word: "puzzled", definition: "Confused and unable to understand something", simpleDefinition: "Confused because something does not make sense", synonyms: ["confused", "baffled", "bewildered", "stumped"], antonyms: ["certain", "clear", "understanding"], difficulty: 1, pos: "adjective", example: "She had a puzzled look on her face." },
+  { word: "rude", definition: "Behaving in a way that is not polite or respectful", simpleDefinition: "Being impolite and not caring about other people's feelings", synonyms: ["impolite", "disrespectful", "discourteous", "offensive"], antonyms: ["polite", "courteous", "respectful"], difficulty: 1, pos: "adjective", example: "It was rude to interrupt the teacher mid-sentence." },
+  { word: "selfish", definition: "Caring only about yourself and not about others", simpleDefinition: "Only thinking about what you want — not sharing or caring", synonyms: ["greedy", "self-centred", "inconsiderate", "ungracious"], antonyms: ["generous", "selfless", "charitable"], difficulty: 1, pos: "adjective", example: "It was selfish not to share the last biscuit." },
+  { word: "sly", definition: "Clever but sneaky; getting what you want by tricking others", simpleDefinition: "Sneaky and clever in a not-quite-honest way", synonyms: ["crafty", "cunning", "devious", "sneaky"], antonyms: ["honest", "open", "straightforward"], difficulty: 1, pos: "adjective", example: "The sly fox tricked the crow into dropping the cheese." },
+  { word: "stubborn", definition: "Refusing to change your mind or give in, even when you should", simpleDefinition: "Not willing to budge — you have made up your mind and that is that", synonyms: ["obstinate", "headstrong", "unyielding", "persistent"], antonyms: ["flexible", "compliant", "obedient"], difficulty: 1, pos: "adjective", example: "The stubborn mule refused to move an inch." },
+  // Difficulty 1 — nouns and verbs
+  { word: "aid", definition: "Help or support given to someone in need", simpleDefinition: "Help that you give to someone who needs it", synonyms: ["help", "support", "assistance", "relief"], antonyms: ["hindrance", "obstruction", "harm"], difficulty: 1, pos: "noun", example: "The nurse came to his aid straight away." },
+  { word: "boast", definition: "To talk with too much pride about yourself or what you have", simpleDefinition: "Showing off and talking about how great you are", synonyms: ["brag", "show off", "crow", "gloat"], antonyms: ["modest", "humble", "downplay"], difficulty: 1, pos: "verb", example: "He loved to boast about his football skills." },
+  { word: "courage", definition: "The ability to do something frightening; bravery", simpleDefinition: "Being brave enough to do scary or difficult things", synonyms: ["bravery", "boldness", "fearlessness", "nerve"], antonyms: ["cowardice", "fear", "timidity"], difficulty: 1, pos: "noun", example: "It took courage to speak up in front of the class." },
+  { word: "danger", definition: "The possibility of suffering harm or injury", simpleDefinition: "When something could hurt you or go badly wrong", synonyms: ["peril", "risk", "hazard", "threat"], antonyms: ["safety", "security", "protection"], difficulty: 1, pos: "noun", example: "The sign warned of danger ahead." },
+  { word: "delight", definition: "A feeling of great pleasure and happiness", simpleDefinition: "A burst of being really, really happy", synonyms: ["joy", "pleasure", "happiness", "bliss"], antonyms: ["misery", "sorrow", "displeasure"], difficulty: 1, pos: "noun", example: "The children squealed with delight." },
+  { word: "enemy", definition: "A person or group that opposes and wants to harm you", simpleDefinition: "Someone who is against you and wishes you harm", synonyms: ["foe", "opponent", "rival", "adversary"], antonyms: ["friend", "ally", "companion"], difficulty: 1, pos: "noun", example: "The knight finally defeated his enemy." },
+  { word: "ignore", definition: "To deliberately take no notice of something or someone", simpleDefinition: "To act as if something or someone is not there on purpose", synonyms: ["disregard", "overlook", "dismiss", "snub"], antonyms: ["acknowledge", "notice", "heed"], difficulty: 1, pos: "verb", example: "She chose to ignore the unkind remark." },
+  { word: "reward", definition: "Something given in return for good work or behaviour", simpleDefinition: "Something nice you get for doing something well", synonyms: ["prize", "gift", "bonus", "recognition"], antonyms: ["punishment", "penalty", "consequence"], difficulty: 1, pos: "noun", example: "She received a sticker as a reward for helping." },
+  { word: "shame", definition: "A painful feeling of having done something wrong or embarrassing", simpleDefinition: "The awful feeling you get when you have done something bad or embarrassing", synonyms: ["embarrassment", "guilt", "disgrace", "regret"], antonyms: ["pride", "honour", "confidence"], difficulty: 1, pos: "noun", example: "His face went red with shame." },
+  { word: "trust", definition: "To believe that someone is honest, reliable, and good", simpleDefinition: "Feeling sure that someone will do the right thing", synonyms: ["believe", "rely", "depend", "confide"], antonyms: ["distrust", "doubt", "suspect"], difficulty: 1, pos: "verb", example: "You can trust her to keep a secret." },
+  { word: "warn", definition: "To tell someone about a possible danger or problem in advance", simpleDefinition: "To let someone know something bad might happen so they can be careful", synonyms: ["caution", "alert", "advise", "notify"], antonyms: ["reassure", "conceal", "mislead"], difficulty: 1, pos: "verb", example: "She warned him not to touch the hot pan." },
+  // Difficulty 2 — bridging vocabulary
+  { word: "admire", definition: "To respect and think highly of someone or their qualities", simpleDefinition: "To look up to someone or be really impressed by them", synonyms: ["respect", "appreciate", "esteem", "revere"], antonyms: ["despise", "scorn", "disrespect"], difficulty: 2, pos: "verb", example: "Everyone admired her talent for painting." },
+  { word: "alarmed", definition: "Suddenly frightened or worried by something unexpected", simpleDefinition: "Suddenly scared because something seems wrong", synonyms: ["frightened", "startled", "anxious", "disturbed"], antonyms: ["calm", "reassured", "composed"], difficulty: 2, pos: "adjective", example: "The teacher looked alarmed at the sudden crash." },
+  { word: "alert", definition: "Watchful and ready to respond quickly to any danger", simpleDefinition: "Wide awake and ready for anything that might happen", synonyms: ["watchful", "attentive", "vigilant", "sharp"], antonyms: ["drowsy", "inattentive", "oblivious"], difficulty: 2, pos: "adjective", example: "The guard stayed alert throughout the night." },
+  { word: "anxious", definition: "Worried and nervous about what might happen", simpleDefinition: "Feeling worried and unsettled about something coming up", synonyms: ["worried", "nervous", "uneasy", "apprehensive"], antonyms: ["calm", "confident", "relaxed"], difficulty: 2, pos: "adjective", example: "She was anxious about her exam results." },
+  { word: "bitter", definition: "Feeling or showing anger and resentment; or having a sharp, unpleasant taste", simpleDefinition: "Feeling angry and hurt — or tasting very sharp and unpleasant", synonyms: ["resentful", "hostile", "sour", "acrid"], antonyms: ["content", "sweet", "pleasant"], difficulty: 2, pos: "adjective", example: "He felt bitter about losing the competition unfairly." },
+  { word: "brisk", definition: "Quick and energetic; pleasantly fresh and cold", simpleDefinition: "Fast and full of energy — or fresh and cold like winter air", synonyms: ["quick", "lively", "energetic", "sharp"], antonyms: ["slow", "sluggish", "lethargic"], difficulty: 2, pos: "adjective", example: "They went for a brisk walk through the park." },
+  { word: "cowardly", definition: "Lacking courage; easily scared or avoiding danger", simpleDefinition: "Being scared and not willing to face something difficult", synonyms: ["timid", "fearful", "spineless", "faint-hearted"], antonyms: ["brave", "bold", "courageous"], difficulty: 2, pos: "adjective", example: "It was cowardly to run away and leave his friend." },
+  { word: "determined", definition: "Having made a firm decision and absolutely sticking to it", simpleDefinition: "Having made up your mind firmly and not giving up", synonyms: ["resolute", "steadfast", "persistent", "firm"], antonyms: ["uncertain", "wavering", "irresolute"], difficulty: 2, pos: "adjective", example: "She was determined to finish the race." },
+  { word: "dreadful", definition: "Extremely bad or unpleasant; causing fear or dread", simpleDefinition: "Really terrible — something you dread or find awful", synonyms: ["terrible", "awful", "horrible", "appalling"], antonyms: ["wonderful", "pleasant", "delightful"], difficulty: 2, pos: "adjective", example: "The weather was dreadful — rain all day long." },
+  { word: "encourage", definition: "To give support, confidence, or hope to someone", simpleDefinition: "To cheer someone on and help them believe they can do it", synonyms: ["inspire", "motivate", "support", "bolster"], antonyms: ["discourage", "deter", "undermine"], difficulty: 2, pos: "verb", example: "The coach encouraged the team at half-time." },
+  { word: "exhausted", definition: "Completely drained of energy; extremely tired", simpleDefinition: "So tired you have no energy left at all", synonyms: ["tired", "weary", "drained", "spent"], antonyms: ["energetic", "refreshed", "alert"], difficulty: 2, pos: "adjective", example: "She was exhausted after the long hike." },
+  { word: "fond", definition: "Having affection or liking for someone or something", simpleDefinition: "Liking something or someone a lot — warmly attached", synonyms: ["affectionate", "loving", "devoted", "partial"], antonyms: ["indifferent", "hostile", "averse"], difficulty: 2, pos: "adjective", example: "He was very fond of his little sister." },
+  { word: "fortunate", definition: "Having good luck; lucky", simpleDefinition: "Lucky — things tend to go well for you", synonyms: ["lucky", "blessed", "favoured", "prosperous"], antonyms: ["unfortunate", "unlucky", "cursed"], difficulty: 2, pos: "adjective", example: "She was fortunate to find the lost ring." },
+  { word: "graceful", definition: "Moving in a smooth, easy, and attractive way", simpleDefinition: "Moving beautifully and smoothly — like a dancer", synonyms: ["elegant", "fluid", "smooth", "nimble"], antonyms: ["clumsy", "awkward", "ungainly"], difficulty: 2, pos: "adjective", example: "The graceful swan glided across the lake." },
+  { word: "hesitant", definition: "Slow to act or speak because of uncertainty or nervousness", simpleDefinition: "Pausing and unsure — not quite ready to go ahead", synonyms: ["uncertain", "tentative", "reluctant", "wavering"], antonyms: ["confident", "bold", "decisive"], difficulty: 2, pos: "adjective", example: "She gave a hesitant answer — she wasn't sure." },
+  { word: "hopeful", definition: "Feeling or inspiring optimism about the future", simpleDefinition: "Feeling sure that something good will happen", synonyms: ["optimistic", "confident", "expectant", "positive"], antonyms: ["hopeless", "pessimistic", "despairing"], difficulty: 2, pos: "adjective", example: "He was hopeful about passing his test." },
+  { word: "humble", definition: "Not proud or arrogant; having a modest view of oneself", simpleDefinition: "Not boasting or showing off — staying quietly modest", synonyms: ["modest", "unassuming", "meek", "unboastful"], antonyms: ["proud", "arrogant", "boastful"], difficulty: 2, pos: "adjective", example: "Despite winning the prize, she stayed humble." },
+  { word: "impatient", definition: "Irritated by waiting; not willing to wait calmly", simpleDefinition: "Getting annoyed because you have to wait for something", synonyms: ["restless", "irritable", "anxious", "hasty"], antonyms: ["patient", "calm", "tolerant"], difficulty: 2, pos: "adjective", example: "He tapped his foot, impatient for the bus to arrive." },
+  { word: "innocent", definition: "Not guilty of any wrongdoing; pure and without bad intentions", simpleDefinition: "Not having done anything wrong — honest and pure", synonyms: ["blameless", "guiltless", "pure", "naive"], antonyms: ["guilty", "corrupt", "culpable"], difficulty: 2, pos: "adjective", example: "The innocent child had no idea what had happened." },
+  { word: "loyal", definition: "Faithful and supportive to a person, group, or cause", simpleDefinition: "Always sticking by someone no matter what", synonyms: ["faithful", "devoted", "trustworthy", "steadfast"], antonyms: ["disloyal", "treacherous", "unfaithful"], difficulty: 2, pos: "adjective", example: "She was a loyal friend who never told his secret." },
+  { word: "obedient", definition: "Doing what you are told; following rules and instructions", simpleDefinition: "Doing what you are asked without arguing", synonyms: ["compliant", "dutiful", "disciplined", "cooperative"], antonyms: ["disobedient", "rebellious", "defiant"], difficulty: 2, pos: "adjective", example: "The obedient puppy sat when told." },
+  { word: "panic", definition: "A sudden feeling of great fear that makes it hard to think clearly", simpleDefinition: "A sudden rush of fear that makes you forget what to do", synonyms: ["dread", "alarm", "terror", "fright"], antonyms: ["calm", "composure", "serenity"], difficulty: 2, pos: "noun", example: "Panic spread through the crowd when the fire alarm sounded." },
+  { word: "peculiar", definition: "Strange or unusual; different from what is expected", simpleDefinition: "Odd and a bit strange — not quite normal", synonyms: ["strange", "odd", "unusual", "bizarre"], antonyms: ["normal", "ordinary", "usual"], difficulty: 2, pos: "adjective", example: "There was a peculiar smell coming from the cupboard." },
+  { word: "pity", definition: "A feeling of sadness for someone who is in a difficult situation", simpleDefinition: "Feeling sorry for someone because they are suffering", synonyms: ["sympathy", "compassion", "mercy", "sorrow"], antonyms: ["indifference", "cruelty", "contempt"], difficulty: 2, pos: "noun", example: "She felt pity for the stray dog in the rain." },
+  { word: "rely", definition: "To depend on someone or something with confidence", simpleDefinition: "To trust someone to be there or to do what they say", synonyms: ["depend", "trust", "count on", "lean"], antonyms: ["distrust", "doubt", "disbelieve"], difficulty: 2, pos: "verb", example: "You can rely on her to keep her promise." },
+  { word: "rescue", definition: "To save someone from danger or a difficult situation", simpleDefinition: "To get someone out of danger and bring them to safety", synonyms: ["save", "free", "liberate", "retrieve"], antonyms: ["abandon", "endanger", "trap"], difficulty: 2, pos: "verb", example: "The lifeguard dived in to rescue the swimmer." },
+  { word: "shocked", definition: "Very surprised and upset by something unexpected", simpleDefinition: "So surprised you cannot believe what just happened", synonyms: ["stunned", "astonished", "appalled", "aghast"], antonyms: ["unsurprised", "calm", "indifferent"], difficulty: 2, pos: "adjective", example: "She was shocked by the sudden loud bang." },
+  { word: "swift", definition: "Moving or happening very quickly", simpleDefinition: "Really fast — happening in a flash", synonyms: ["fast", "quick", "rapid", "speedy"], antonyms: ["slow", "sluggish", "gradual"], difficulty: 2, pos: "adjective", example: "The swift river carried the boat downstream." },
+  { word: "tender", definition: "Gentle and kind; easily hurt or sensitive", simpleDefinition: "Soft and gentle — or sore and sensitive to touch", synonyms: ["gentle", "kind", "soft", "delicate"], antonyms: ["rough", "harsh", "tough"], difficulty: 2, pos: "adjective", example: "She gave her little brother a tender hug." },
+  { word: "thankful", definition: "Feeling grateful and pleased about something", simpleDefinition: "Really glad something happened and wanting to say thank you", synonyms: ["grateful", "appreciative", "relieved", "content"], antonyms: ["ungrateful", "resentful", "dissatisfied"], difficulty: 2, pos: "adjective", example: "He was thankful that his friend forgave him." },
+  { word: "thoughtful", definition: "Thinking carefully about others and their feelings", simpleDefinition: "Caring about how others feel and doing things to help them", synonyms: ["considerate", "caring", "attentive", "kind"], antonyms: ["inconsiderate", "selfish", "thoughtless"], difficulty: 2, pos: "adjective", example: "It was thoughtful of her to bring flowers." },
+  { word: "uncertain", definition: "Not sure about something; having doubts", simpleDefinition: "Not knowing what to think — unsure and a bit doubtful", synonyms: ["unsure", "doubtful", "hesitant", "undecided"], antonyms: ["certain", "confident", "sure"], difficulty: 2, pos: "adjective", example: "He was uncertain which path to take." },
+  { word: "unfortunate", definition: "Having or bringing bad luck; regrettable", simpleDefinition: "Unlucky — something bad happened that was not deserved", synonyms: ["unlucky", "regrettable", "undesirable", "hapless"], antonyms: ["fortunate", "lucky", "blessed"], difficulty: 2, pos: "adjective", example: "It was unfortunate that it rained on Sports Day." },
+  { word: "upset", definition: "Unhappy, worried, or disturbed by something", simpleDefinition: "Feeling sad or worried because something went wrong", synonyms: ["distressed", "troubled", "hurt", "bothered"], antonyms: ["content", "calm", "pleased"], difficulty: 2, pos: "adjective", example: "She was upset when her drawing was ruined." },
+  { word: "weary", definition: "Feeling tired, especially after a long effort", simpleDefinition: "Very tired — worn out from doing something for a long time", synonyms: ["tired", "exhausted", "fatigued", "drained"], antonyms: ["energetic", "refreshed", "alert"], difficulty: 2, pos: "adjective", example: "The weary traveller sat down to rest." },
 ];
 
 const WORD_MAP = Object.fromEntries(VOCAB_BANK.map(w => [w.word, w]));
+
+// ─── VR BANK v1.8 ─────────────────────────────────────────────────────────────
+// Seed bank — Opus-generated full bank to follow in v1.8.1
+// Analogy schema: { id, type:"analogy", given:[A,B], stem:C, correct:D, distractors:[x,x,x], difficulty, category }
+// Odd-one-out schema: { id, type:"odd_one_out", words:[5 items], correct, explanation, difficulty, category }
+const VR_BANK = [
+  // ── Analogies ──────────────────────────────────────────────────────────────
+  { id:"vr-an-001", type:"analogy", given:["hot","cold"], stem:"day", correct:"night", distractors:["morning","bright","sunny"], difficulty:1, category:"opposites" },
+  { id:"vr-an-002", type:"analogy", given:["dog","kennel"], stem:"bird", correct:"nest", distractors:["cage","tree","sky"], difficulty:1, category:"home" },
+  { id:"vr-an-003", type:"analogy", given:["finger","hand"], stem:"toe", correct:"foot", distractors:["leg","nail","heel"], difficulty:1, category:"part-whole" },
+  { id:"vr-an-004", type:"analogy", given:["happy","joyful"], stem:"sad", correct:"miserable", distractors:["tired","angry","scared"], difficulty:2, category:"synonyms" },
+  { id:"vr-an-005", type:"analogy", given:["doctor","hospital"], stem:"teacher", correct:"school", distractors:["office","library","college"], difficulty:1, category:"person-place" },
+  { id:"vr-an-006", type:"analogy", given:["kitten","cat"], stem:"puppy", correct:"dog", distractors:["wolf","fox","bear"], difficulty:1, category:"young-adult" },
+  { id:"vr-an-007", type:"analogy", given:["light","heavy"], stem:"whisper", correct:"shout", distractors:["speak","mumble","laugh"], difficulty:2, category:"opposites" },
+  { id:"vr-an-008", type:"analogy", given:["page","book"], stem:"brick", correct:"wall", distractors:["house","stone","road"], difficulty:2, category:"part-whole" },
+  { id:"vr-an-009", type:"analogy", given:["painter","brush"], stem:"writer", correct:"pen", distractors:["desk","book","paper"], difficulty:2, category:"person-tool" },
+  { id:"vr-an-010", type:"analogy", given:["cold","shiver"], stem:"hot", correct:"sweat", distractors:["melt","burn","sleep"], difficulty:2, category:"cause-effect" },
+  { id:"vr-an-011", type:"analogy", given:["begin","end"], stem:"arrive", correct:"depart", distractors:["travel","wait","hurry"], difficulty:2, category:"opposites" },
+  { id:"vr-an-012", type:"analogy", given:["scales","fish"], stem:"feathers", correct:"bird", distractors:["wings","eagle","fly"], difficulty:2, category:"feature-animal" },
+  // ── Odd one out ────────────────────────────────────────────────────────────
+  { id:"vr-oo-001", type:"odd_one_out", words:["apple","pear","banana","carrot","grape"], correct:"carrot", explanation:"Carrot is a vegetable; the others are all fruits.", difficulty:1, category:"food" },
+  { id:"vr-oo-002", type:"odd_one_out", words:["lion","tiger","elephant","leopard","cheetah"], correct:"elephant", explanation:"Elephant is not a big cat; the others are all big cats.", difficulty:1, category:"animals" },
+  { id:"vr-oo-003", type:"odd_one_out", words:["red","blue","angry","green","yellow"], correct:"angry", explanation:"Angry is an emotion; the others are all colours.", difficulty:1, category:"categories" },
+  { id:"vr-oo-004", type:"odd_one_out", words:["swim","run","jump","talk","skip"], correct:"talk", explanation:"Talk is not a physical movement; the others all involve moving your body.", difficulty:1, category:"actions" },
+  { id:"vr-oo-005", type:"odd_one_out", words:["oak","elm","pine","daisy","birch"], correct:"daisy", explanation:"Daisy is a flower; the others are all trees.", difficulty:1, category:"plants" },
+  { id:"vr-oo-006", type:"odd_one_out", words:["happy","sad","running","angry","peaceful"], correct:"running", explanation:"Running is an action; the others are all feelings or emotions.", difficulty:1, category:"feelings" },
+  { id:"vr-oo-007", type:"odd_one_out", words:["Paris","London","Rome","Berlin","house"], correct:"house", explanation:"House is a building; the others are all capital cities.", difficulty:1, category:"places" },
+  { id:"vr-oo-008", type:"odd_one_out", words:["piano","violin","guitar","flute","hammer"], correct:"hammer", explanation:"Hammer is a tool; the others are all musical instruments.", difficulty:1, category:"objects" },
+  { id:"vr-oo-009", type:"odd_one_out", words:["whisper","shout","mumble","mutter","sprint"], correct:"sprint", explanation:"Sprint is a way of moving; the others are all ways of speaking.", difficulty:2, category:"actions" },
+  { id:"vr-oo-010", type:"odd_one_out", words:["brave","courageous","timid","bold","daring"], correct:"timid", explanation:"Timid means the opposite of the others; the rest all mean brave or daring.", difficulty:2, category:"synonyms" },
+];
 
 // ─── DISTRACTOR DICTIONARY ────────────────────────────────────────────────────
 // Definition data for words that appear as distractors but aren't target words.
@@ -1660,6 +1802,33 @@ const DISTRACTOR_DICT = {
 // Looks up a word in WORD_MAP first, falls back to DISTRACTOR_DICT
 function lookupWord(word) { return WORD_MAP[word] || DISTRACTOR_DICT[word] || null; }
 
+// ─── ANTONYM BANK (VR) ────────────────────────────────────────────────────────
+// Each entry: the word to display, a pool of valid correct antonyms, and a pool
+// of synonym-distractors (related to the word but NOT its opposite — plausible wrong answers).
+const ANTONYM_BANK = VOCAB_BANK
+  .filter(w => w.antonyms?.length >= 1 && w.synonyms?.length >= 3)
+  .map(w => ({
+    id: `vr-ant-${w.word}`,
+    type: "antonym_pair",
+    word: w.word,
+    antonyms: w.antonyms,     // pool of valid correct answers
+    synonymPool: w.synonyms,  // distractor pool: related but NOT opposite
+    difficulty: w.difficulty,
+  }));
+
+// ─── SYNONYM BANK (VR) ────────────────────────────────────────────────────────
+// Each entry: word to display, pool of valid synonyms, antonyms as distractors.
+const SYNONYM_BANK = VOCAB_BANK
+  .filter(w => w.synonyms?.length >= 2 && w.antonyms?.length >= 3)
+  .map(w => ({
+    id: `vr-syn-${w.word}`,
+    type: "synonym_pair",
+    word: w.word,
+    synonyms: w.synonyms,     // pool of valid correct answers
+    antonymPool: w.antonyms,  // distractor pool: opposites — plausible but wrong direction
+    difficulty: w.difficulty,
+  }));
+
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 function shuffle(arr) {
   const a = [...arr];
@@ -1709,11 +1878,12 @@ function isMastered(wordEntry, leitnerEntry) {
   return formats.every(f => seen[f]);
 }
 
-function getDueWords(leitnerBoxes) {
+function getDueWords(leitnerBoxes, maxDifficulty = 5) {
   const now = Date.now();
   const intervals = [0, 1, 3, 7, 14, 30];
   const due = [];
   VOCAB_BANK.forEach(w => {
+    if (w.difficulty > maxDifficulty) return;
     const entry = leitnerBoxes[w.word];
     if (!entry) { due.push({ ...w, box: 0, nextFormat: nextFormatDue(w, null) }); return; }
     const daysSince = (now - entry.lastSeen) / 86400000;
@@ -1722,6 +1892,150 @@ function getDueWords(leitnerBoxes) {
     }
   });
   return shuffle(due);
+}
+
+// ─── DOMAINS CONFIG ──────────────────────────────────────────────────────────
+const DOMAINS = {
+  vocab: { id:"vocab", label:"Vocabulary",        icon:"📚", color:"var(--accent)",  sub:"Synonyms, antonyms, definitions" },
+  vr:    { id:"vr",    label:"Verbal Reasoning",  icon:"🧠", color:"var(--purple)",  sub:"Analogies, word pairs, sequences" },
+};
+
+function getDueVRQuestions(vrLeitnerBoxes, maxDifficulty = 5) {
+  const now = Date.now();
+  const intervals = [0, 1, 3, 7, 14, 30];
+  const due = [];
+
+  const isDue = (id) => {
+    const entry = vrLeitnerBoxes[id];
+    if (!entry) return true;
+    const daysSince = (now - entry.lastSeen) / 86400000;
+    return daysSince >= intervals[Math.min(entry.box, 5)];
+  };
+
+  VR_BANK.forEach(q => {
+    if (q.difficulty > maxDifficulty) return;
+    if (isDue(q.id)) due.push(q);
+  });
+  ANTONYM_BANK.forEach(q => {
+    if (q.difficulty > maxDifficulty) return;
+    if (isDue(q.id)) due.push(q);
+  });
+  SYNONYM_BANK.forEach(q => {
+    if (q.difficulty > maxDifficulty) return;
+    if (isDue(q.id)) due.push(q);
+  });
+
+  // Shuffle and pre-compute options so they don't re-shuffle on re-render
+  return shuffle(due).map(q => {
+    if (q.type === "analogy") return { ...q, options: shuffle([q.correct, ...q.distractors]) };
+    if (q.type === "odd_one_out") return { ...q, displayWords: shuffle([...q.words]) };
+    if (q.type === "antonym_pair") {
+      const correct = q.antonyms[Math.floor(Math.random() * q.antonyms.length)];
+      const distractors = shuffle(q.synonymPool.filter(d => d !== correct)).slice(0, 3);
+      return { ...q, correct, options: shuffle([correct, ...distractors]) };
+    }
+    if (q.type === "synonym_pair") {
+      const correct = q.synonyms[Math.floor(Math.random() * q.synonyms.length)];
+      const distractors = shuffle(q.antonymPool.filter(d => d !== correct)).slice(0, 3);
+      return { ...q, correct, options: shuffle([correct, ...distractors]) };
+    }
+    return q;
+  });
+}
+
+// ─── LETTER SEQUENCE GENERATOR ────────────────────────────────────────────────
+// Generates a 4-item letter sequence + correct next letter + 3 distractors.
+// Capped at difficulty 2 for v1.9; complex patterns extend in v1.10.
+function generateLetterSequence(maxDifficulty) {
+  const diff = Math.max(1, Math.min(maxDifficulty, 2));
+  const patterns = [
+    { rule: "+2", step:  2, diff: 1 },
+    { rule: "+3", step:  3, diff: 1 },
+    { rule: "-1", step: -1, diff: 1 },
+    { rule: "+4", step:  4, diff: 2 },
+    { rule: "-2", step: -2, diff: 2 },
+    { rule: "+5", step:  5, diff: 2 },
+    { rule: "-3", step: -3, diff: 2 },
+  ].filter(p => p.diff <= diff);
+
+  const pattern = patterns[Math.floor(Math.random() * patterns.length)];
+  const { step } = pattern;
+
+  // Choose start so all 5 terms (seq[0..3] + correct) stay within A(0)–Z(25)
+  const minStart = step < 0 ? -4 * step : 0;
+  const maxStart = step > 0 ? 25 - 4 * step : 25;
+  const start = minStart + Math.floor(Math.random() * (maxStart - minStart + 1));
+
+  const codes = [0, 1, 2, 3, 4].map(i => start + i * step);
+  const sequence = codes.slice(0, 4).map(c => String.fromCharCode(65 + c));
+  const correct = String.fromCharCode(65 + codes[4]);
+
+  // Distractors: letters near the correct answer, excluding correct itself
+  const correctCode = codes[4];
+  const distCodes = [-3, -2, -1, 1, 2, 3]
+    .map(d => correctCode + d)
+    .filter(c => c >= 0 && c <= 25 && c !== correctCode);
+  const distractors = shuffle(distCodes).slice(0, 3).map(c => String.fromCharCode(65 + c));
+
+  return { id: null, type: "letter_sequence", sequence, correct, options: shuffle([correct, ...distractors]), rule: pattern.rule, difficulty: pattern.diff };
+}
+
+// ─── NUMBER SEQUENCE GENERATOR ────────────────────────────────────────────────
+// Generates a 4-item arithmetic number sequence + correct next term + 3 distractors.
+// Capped at difficulty 2 for v1.9; geometric/alternating patterns extend in v1.10.
+function generateNumberSequence(maxDifficulty) {
+  const diff = Math.max(1, Math.min(maxDifficulty, 2));
+  const patterns = [
+    { rule: "+2",  step:  2, diff: 1 },
+    { rule: "+3",  step:  3, diff: 1 },
+    { rule: "+5",  step:  5, diff: 1 },
+    { rule: "+10", step: 10, diff: 1 },
+    { rule: "-2",  step: -2, diff: 1 },
+    { rule: "-3",  step: -3, diff: 1 },
+    { rule: "+6",  step:  6, diff: 2 },
+    { rule: "+7",  step:  7, diff: 2 },
+    { rule: "+9",  step:  9, diff: 2 },
+    { rule: "-4",  step: -4, diff: 2 },
+    { rule: "-5",  step: -5, diff: 2 },
+  ].filter(p => p.diff <= diff);
+
+  const pattern = patterns[Math.floor(Math.random() * patterns.length)];
+  const { step } = pattern;
+
+  // Choose start so terms[0..4] are all positive
+  // For positive step: start >= 1, max kept reasonable
+  // For negative step: start >= -4*step + 1 (ensures terms[4] >= 1)
+  const minStart = step < 0 ? -4 * step + 1 : 1;
+  const maxStart = step > 0 ? Math.min(99, 999 - 4 * step) : 99;
+  const start = minStart + Math.floor(Math.random() * Math.min(50, maxStart - minStart + 1));
+
+  const terms = [0, 1, 2, 3, 4].map(i => start + i * step);
+  const sequence = terms.slice(0, 4);
+  const correct = terms[4];
+
+  // Distractors: plausible values near correct — exclude correct, negatives, and already-shown terms
+  const gap = Math.abs(step);
+  const shownTerms = new Set(terms.slice(0, 4));
+  const distCandidates = [-2, -1, 1, 2]
+    .map(d => correct + d * gap)
+    .concat([correct + 1, correct - 1])
+    .filter(d => d !== correct && d > 0 && !shownTerms.has(d))
+    .map(d => Math.round(d));
+  const distractors = shuffle([...new Set(distCandidates)]).slice(0, 3);
+
+  return { id: null, type: "number_sequence", sequence, correct, options: shuffle([correct, ...distractors]), rule: pattern.rule, difficulty: pattern.diff };
+}
+
+// ─── DOMAIN AUTO-ROTATION ─────────────────────────────────────────────────────
+// Returns which domain to run next based on Leitner state + session history.
+// Receives pre-computed counts to avoid re-running getDue* functions.
+function pickDomain(dueVocab, dueVR, sessionHistory) {
+  if (dueVocab === 0 && dueVR === 0) return null; // all caught up
+  if (dueVocab === 0) return "vr";
+  if (dueVR === 0) return "vocab";
+  // Strict alternation: always switch from last domain
+  const lastDomain = sessionHistory.length > 0 ? sessionHistory[sessionHistory.length - 1].domain : "vr";
+  return lastDomain === "vocab" ? "vr" : "vocab";
 }
 
 function makeDistractors(wordEntry, field) {
@@ -1876,7 +2190,9 @@ const css = `
   .profile-card .pc-avatar { font-size:22px; line-height:1; }
   .profile-card .pc-name { font-weight:600; font-size:14px; }
   .profile-card .pc-stats { font-size:11px; color:var(--ink-soft); }
-  .profile-card .pc-check { margin-left:auto; color:var(--accent); font-size:16px; }
+  .profile-card .pc-check { color:var(--accent); font-size:16px; }
+  .profile-card .pc-edit { margin-left:auto; background:transparent; border:none; font-size:14px; cursor:pointer; padding:2px 4px; opacity:0.5; transition:opacity 0.12s; border-radius:4px; }
+  .profile-card .pc-edit:hover { opacity:1; background:var(--cream); }
   .add-profile-btn { width:100%; padding:10px; border:2px dashed var(--border); border-radius:10px; background:transparent; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; color:var(--ink-soft); cursor:pointer; transition:all 0.15s; }
   .add-profile-btn:hover { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
   .profile-close { float:right; background:transparent; border:none; font-size:18px; cursor:pointer; color:var(--ink-soft); line-height:1; padding:2px 4px; }
@@ -1896,6 +2212,13 @@ const css = `
   .creator-save { flex:1; padding:10px; background:var(--accent); color:white; border:none; border-radius:8px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:700; cursor:pointer; }
   .creator-save:disabled { opacity:0.4; cursor:not-allowed; }
   .creator-cancel { padding:10px 14px; background:var(--cream); color:var(--ink); border:none; border-radius:8px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
+  .reset-zone { margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
+  .reset-btn { width:100%; padding:9px; background:transparent; border:1.5px solid #e74c3c; color:#e74c3c; border-radius:8px; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; }
+  .reset-btn:hover { background:#fdf0ef; }
+  .reset-confirm { display:flex; gap:8px; align-items:center; }
+  .reset-confirm-msg { font-size:12px; color:#e74c3c; font-weight:600; flex:1; }
+  .reset-yes { padding:8px 14px; background:#e74c3c; color:white; border:none; border-radius:7px; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:700; cursor:pointer; }
+  .reset-no { padding:8px 12px; background:var(--cream); color:var(--ink); border:none; border-radius:7px; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; cursor:pointer; }
 
   .nav { display:flex; border-bottom:1px solid var(--border); background:white; padding:0 18px; overflow-x:auto; }
   .nav-btn { padding:12px 16px; border:none; background:transparent; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; color:var(--ink-soft); cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; transition:all 0.15s; }
@@ -1926,6 +2249,10 @@ const css = `
   .badge-antonym { background:var(--accent); color:white; }
   .badge-definition { background:var(--purple); color:white; }
   .badge-fillblank { background:var(--green); color:white; }
+  .badge-analogy { background:var(--purple); color:white; }
+  .badge-oddoneout { background:var(--blue); color:white; }
+  .badge-letterseq { background:#0f766e; color:white; }
+  .badge-numseq { background:#b45309; color:white; }
   .q-word { font-family:'Fraunces',serif; font-size:30px; font-weight:700; letter-spacing:-0.5px; margin-bottom:0; flex:1; }
   .q-prompt { font-size:13px; color:rgba(255,255,255,0.6); margin-bottom:8px; }
   .q-clue { font-family:'Fraunces',serif; font-size:17px; font-weight:600; color:white; font-style:italic; line-height:1.5; display:block; }
@@ -2061,6 +2388,76 @@ const css = `
   .action-btn:hover { opacity:0.9; }
   .action-btn:disabled { opacity:0.35; cursor:default; }
 
+  /* DOMAIN TILES (subject picker) */
+  .domain-tiles { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+  .domain-tile {
+    border:2px solid var(--border); border-radius:var(--radius-sm); padding:14px 12px 12px;
+    cursor:pointer; transition:border-color 0.12s, box-shadow 0.12s; background:white;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .domain-tile:hover { border-color:var(--accent); box-shadow:0 2px 8px rgba(0,0,0,0.07); }
+  .domain-tile-empty { opacity:0.55; cursor:default; }
+  .domain-tile-empty:hover { border-color:var(--border); box-shadow:none; }
+  .dt-icon { font-size:26px; margin-bottom:4px; }
+  .dt-label { font-size:13px; font-weight:700; color:var(--ink); }
+  .dt-sub { font-size:11px; color:var(--ink-soft); line-height:1.4; margin-bottom:4px; }
+  .dt-stats { display:flex; flex-direction:column; gap:3px; margin-top:auto; }
+  .dt-due { font-size:12px; font-weight:700; color:var(--accent); }
+  .dt-caught-up { font-size:12px; font-weight:700; color:var(--green); }
+  .dt-mastered { font-size:11px; color:var(--ink-soft); }
+
+  /* VR ANALOGY DISPLAY */
+  .vr-analogy-display {
+    display:flex; align-items:center; flex-wrap:wrap; gap:6px;
+    font-family:'Fraunces',serif; font-size:20px; font-weight:700;
+    color:white; margin-bottom:10px; line-height:1.3;
+  }
+  .vr-pair { letter-spacing:-0.3px; }
+  .vr-sep { color:rgba(255,255,255,0.45); font-size:18px; }
+  .vr-blank { color:rgba(255,255,255,0.4); border-bottom:2px solid rgba(255,255,255,0.4); min-width:48px; display:inline-block; }
+
+  /* VR WORD PAIR — large centred target word */
+  .vr-target-word {
+    font-family:'Fraunces',serif; font-size:36px; font-weight:700;
+    color:white; text-align:center; letter-spacing:1px;
+    padding:10px 0 4px; margin-bottom:6px;
+  }
+  .vr-word-prompt { font-size:13px; color:rgba(255,255,255,0.65); margin-bottom:4px; }
+
+  /* VR SEQUENCE DISPLAY */
+  .vr-sequence-display {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    margin-bottom:8px; margin-top:4px;
+  }
+  .vr-seq-item {
+    font-family:'Fraunces',serif; font-size:26px; font-weight:700; color:white;
+  }
+  .vr-seq-sep { color:rgba(255,255,255,0.35); font-size:18px; }
+  .vr-seq-blank {
+    font-family:'Fraunces',serif; font-size:26px; font-weight:700;
+    color:rgba(255,255,255,0.4); border-bottom:2px solid rgba(255,255,255,0.4);
+    min-width:40px; display:inline-block; text-align:center;
+  }
+
+  /* PREVIEW PANEL */
+  .preview-select {
+    padding:7px 10px; border:1.5px solid var(--border); border-radius:7px;
+    font-size:13px; background:white; color:var(--ink); cursor:pointer;
+  }
+
+  /* VR ODD-ONE-OUT WORD CHIPS */
+  .vr-words-grid { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  .vr-word-chip {
+    padding:9px 14px; border:2px solid var(--border); border-radius:var(--radius-sm);
+    font-size:14px; font-weight:600; background:white; transition:all 0.12s;
+    user-select:none;
+  }
+  .vr-word-chip.clickable { cursor:pointer; }
+  .vr-word-chip.clickable:hover { border-color:var(--accent); background:var(--cream); }
+  .vr-word-chip.correct { border-color:var(--green); background:var(--green-soft); color:var(--green); }
+  .vr-word-chip.wrong { border-color:var(--red); background:var(--red-soft); color:var(--red); }
+  .vr-word-chip.faded { opacity:0.38; }
+
   @keyframes fadeIn { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none} }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
   .pulsing { animation:pulse 1.4s infinite; }
@@ -2133,9 +2530,9 @@ function OptionCard({ opt, selected, correct, answered, onAnswer, onAidUsed, aid
 }
 
 // ─── VOCAB SESSION ────────────────────────────────────────────────────────────
-function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode }) {
+function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficulty = 5 }) {
   const [queue] = useState(() => {
-    const due = getDueWords(leitnerBoxes).slice(0, 20);
+    const due = getDueWords(leitnerBoxes, maxDifficulty).slice(0, 20);
     // Distribute formats across the session so they rotate visibly.
     // Each word gets its Leitner-preferred format if it has history,
     // otherwise we cycle through available formats across the queue.
@@ -2310,6 +2707,292 @@ function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode }) {
             )}
             <button className="next-btn" onClick={() => idx + 1 >= queue.length ? setDone(true) : setIdx(i => i + 1)}>
               {idx + 1 >= queue.length ? "See results →" : "Next word →"}
+            </button>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ─── VR ANALOGY QUESTION ──────────────────────────────────────────────────────
+function VRAnalogy({ q, selected, onAnswer }) {
+  return (
+    <>
+      <div className="q-header">
+        <div className="q-header-top">
+          <div className="q-word">Complete the word pair</div>
+          <div className="q-badge badge-analogy">Analogy</div>
+        </div>
+        <div className="vr-analogy-display">
+          <span className="vr-pair">{q.given[0]}</span>
+          <span className="vr-sep">:</span>
+          <span className="vr-pair">{q.given[1]}</span>
+          <span className="vr-sep">::</span>
+          <span className="vr-pair">{q.stem}</span>
+          <span className="vr-sep">:</span>
+          <span className="vr-blank">___</span>
+        </div>
+      </div>
+      <div className="options-grid">
+        {q.options.map(opt => {
+          let cls = "opt-card";
+          if (selected) {
+            if (opt === q.correct) cls += " correct";
+            else if (opt === selected) cls += " wrong";
+          } else {
+            cls += " clickable";
+          }
+          return (
+            <div key={opt} className={cls} onClick={() => !selected && onAnswer(opt)}>
+              <div className="opt-top"><span className="opt-word">{opt}</span></div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// ─── VR ODD ONE OUT ───────────────────────────────────────────────────────────
+function VROddOneOut({ q, selected, onAnswer }) {
+  return (
+    <>
+      <div className="q-header">
+        <div className="q-header-top">
+          <div className="q-word">Odd one out</div>
+          <div className="q-badge badge-oddoneout">Categories</div>
+        </div>
+        <div className="q-prompt">Which word does <strong>not</strong> belong with the others?</div>
+      </div>
+      <div className="vr-words-grid">
+        {q.displayWords.map(w => {
+          let cls = "vr-word-chip";
+          if (selected) {
+            if (w === q.correct) cls += " correct";
+            else if (w === selected) cls += " wrong";
+            else cls += " faded";
+          } else {
+            cls += " clickable";
+          }
+          return (
+            <div key={w} className={cls} onClick={() => !selected && onAnswer(w)}>
+              {w}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// ─── VR WORD PAIR (antonym_pair / synonym_pair) ───────────────────────────────
+function VRWordPair({ q, selected, onAnswer }) {
+  const isAntonym = q.type === "antonym_pair";
+  const prompt = isAntonym ? "Choose the word MOST OPPOSITE in meaning to:" : "Choose the word CLOSEST in meaning to:";
+  const badge = isAntonym ? "Antonym" : "Synonym";
+  const badgeCls = isAntonym ? "badge-antonym" : "badge-synonym";
+  return (
+    <>
+      <div className="q-header">
+        <div className="q-header-top">
+          <div className="q-word" style={{ fontSize:15, fontFamily:"inherit", fontWeight:600, letterSpacing:0 }}>{prompt}</div>
+          <div className={`q-badge ${badgeCls}`}>{badge}</div>
+        </div>
+        <div className="vr-target-word">{q.word.toUpperCase()}</div>
+      </div>
+      <div className="options-grid">
+        {q.options.map(opt => {
+          let cls = "opt-card";
+          if (selected) {
+            if (opt === q.correct) cls += " correct";
+            else if (opt === selected) cls += " wrong";
+          } else { cls += " clickable"; }
+          return (
+            <div key={opt} className={cls} onClick={() => !selected && onAnswer(opt)}>
+              <div className="opt-top"><span className="opt-word">{opt}</span></div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// ─── VR SEQUENCE (letter_sequence / number_sequence) ──────────────────────────
+function VRSequence({ q, selected, onAnswer }) {
+  const isLetter = q.type === "letter_sequence";
+  const badge = isLetter ? "Letter Seq" : "Number Seq";
+  const badgeCls = isLetter ? "badge-letterseq" : "badge-numseq";
+  return (
+    <>
+      <div className="q-header">
+        <div className="q-header-top">
+          <div className="q-word">What comes next?</div>
+          <div className={`q-badge ${badgeCls}`}>{badge}</div>
+        </div>
+        <div className="vr-sequence-display">
+          {q.sequence.map((item, i) => (
+            <span key={i} className="vr-seq-item">{item}</span>
+          ))}
+          <span className="vr-seq-sep">→</span>
+          <span className="vr-seq-blank">__</span>
+        </div>
+      </div>
+      <div className="options-grid">
+        {q.options.map(opt => {
+          let cls = "opt-card";
+          if (selected) {
+            if (opt === q.correct) cls += " correct";
+            else if (opt === selected) cls += " wrong";
+          } else { cls += " clickable"; }
+          return (
+            <div key={opt} className={cls} onClick={() => !selected && onAnswer(String(opt))}>
+              <div className="opt-top"><span className="opt-word">{opt}</span></div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// ─── VR SESSION ───────────────────────────────────────────────────────────────
+function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficulty = 5 }) {
+  const [queue] = useState(() => {
+    const due = getDueVRQuestions(vrLeitnerBoxes, maxDifficulty).slice(0, 12);
+    // Inject generated sequences alongside Leitner-due items (not tracked in Leitner)
+    const seqCount = Math.max(1, Math.min(2, Math.floor(due.length / 4)));
+    const generated = [
+      ...Array.from({ length: seqCount }, () => generateLetterSequence(maxDifficulty)),
+      ...Array.from({ length: seqCount }, () => generateNumberSequence(maxDifficulty)),
+    ];
+    return shuffle([...due, ...generated]);
+  });
+  const [idx, setIdx] = useState(0);
+  const [selected, setSelected] = useState(null);
+  const [results, setResults] = useState([]);
+  const [done, setDone] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [aiCoach, setAiCoach] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const t0 = useRef(Date.now());
+
+  useEffect(() => {
+    if (!queue.length || idx >= queue.length) { setDone(true); return; }
+    setSelected(null); setAiCoach(null); t0.current = Date.now();
+  }, [idx, queue]);
+
+  useEffect(() => {
+    setElapsed(0);
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - t0.current) / 1000)), 500);
+    return () => clearInterval(id);
+  }, [idx]);
+
+  const handleAnswer = async (opt) => {
+    if (selected) return;
+    const timeMs = Date.now() - t0.current;
+    setSelected(opt);
+    const q = queue[idx];
+    const isCorrect = opt === q.correct;
+    setResults(r => [...r, { id: q.id, correct: isCorrect, type: q.type, timeMs }]);
+
+    if (aiEnabled) {
+      setAiLoading(true);
+      try {
+        const sys = mode === "student"
+          ? `You write 1–2 sentences max for a 10-year-old doing 11+ verbal reasoning practice. Give a memory trick or brief celebration — nothing else.`
+          : `You are an 11+ coaching analyst. Write EXACTLY 2 sentences: one observation on this answer, one teaching action. No waffle.`;
+        let user;
+        if (isCorrect) {
+          user = `Student got a ${q.type} question RIGHT in ${(timeMs/1000).toFixed(1)}s. One short celebration (max 10 words):`;
+        } else if (q.type === "analogy") {
+          user = `Student got analogy wrong: "${q.given[0]} : ${q.given[1]} :: ${q.stem} : ___". Chose "${opt}", correct is "${q.correct}". Explain the relationship in 1 sentence for a 10-year-old.`;
+        } else if (q.type === "odd_one_out") {
+          user = `Student got odd-one-out wrong: chose "${opt}" from [${q.words.join(", ")}]. Correct answer: "${q.correct}". Explanation: ${q.explanation}. Explain in 1 friendly sentence.`;
+        } else if (q.type === "antonym_pair") {
+          user = `Student chose "${opt}" as the antonym of "${q.word}". Correct answer: "${q.correct}". Explain why in 1 friendly sentence for a 10-year-old.`;
+        } else if (q.type === "synonym_pair") {
+          user = `Student chose "${opt}" as a synonym of "${q.word}". Correct answer: "${q.correct}". Explain why in 1 friendly sentence for a 10-year-old.`;
+        } else if (q.type === "letter_sequence") {
+          user = `Student got a letter sequence wrong: ${q.sequence.join(" ")} → ? Chose "${opt}", correct is "${q.correct}". Rule: ${q.rule}. Explain the pattern in 1 sentence for a 10-year-old.`;
+        } else if (q.type === "number_sequence") {
+          user = `Student got a number sequence wrong: ${q.sequence.join(", ")} → ? Chose "${opt}", correct is "${q.correct}". Rule: ${q.rule}. Explain the pattern in 1 sentence for a 10-year-old.`;
+        } else {
+          user = `Student got a question wrong. Chose "${opt}", correct is "${q.correct}". Explain in 1 friendly sentence.`;
+        }
+        const text = await callAI(user, sys);
+        setAiCoach(text || "");
+      } catch { setAiCoach(null); }
+      setAiLoading(false);
+    }
+  };
+
+  if (done || !queue.length) {
+    const correct = results.filter(r => r.correct).length;
+    const total = results.length;
+    const pct = total ? Math.round(correct / total * 100) : 0;
+    const totalMs = results.reduce((sum, r) => sum + (r.timeMs || 0), 0);
+    const qpm = totalMs > 0 ? Math.round((total / (totalMs / 60000)) * 10) / 10 : 0;
+    if (!total) return (
+      <div className="complete">
+        <div className="complete-icon">🧠</div>
+        <div className="complete-title">All caught up!</div>
+        <div className="complete-sub">No VR questions due. Come back tomorrow.</div>
+        <button className="next-btn" onClick={() => onSessionEnd([], [])}>Back →</button>
+      </div>
+    );
+    return (
+      <div className="complete">
+        <div className="complete-icon">{pct >= 80 ? "🌟" : pct >= 60 ? "💪" : "🧠"}</div>
+        <div className="complete-title">{pct >= 80 ? "Brilliant!" : pct >= 60 ? "Good effort!" : "Keep practising!"}</div>
+        <div className="complete-sub">{total} VR questions answered.</div>
+        <div className="complete-stats">
+          <div className={`cs ${pct >= 70 ? "good" : "warn"}`}><div className="val">{pct}%</div><div className="lbl">Score</div></div>
+          <div className="cs good"><div className="val">{correct}</div><div className="lbl">Correct</div></div>
+          <div className="cs warn"><div className="val">{total - correct}</div><div className="lbl">Review</div></div>
+          <div className="cs"><div className="val">{qpm}</div><div className="lbl">Q/min</div></div>
+        </div>
+        <button className="next-btn" onClick={() => onSessionEnd(results, [])}>Save & finish</button>
+      </div>
+    );
+  }
+
+  const q = queue[idx];
+  const isCorrect = selected === q.correct;
+
+  return (
+    <>
+      <div className="prog-wrap"><div className="prog-fill" style={{ width: `${idx / queue.length * 100}%` }} /></div>
+      <div className="stats-row">
+        <div className="stat-pill"><div className="val">{idx + 1}/{queue.length}</div><div className="lbl">Question</div></div>
+        <div className="stat-pill good"><div className="val">{results.filter(r => r.correct).length}</div><div className="lbl">Correct</div></div>
+        <div className="stat-pill warn"><div className="val">{results.filter(r => !r.correct).length}</div><div className="lbl">Review</div></div>
+        <div className={`stat-pill ${elapsed < 20 ? "good" : elapsed <= 30 ? "warn" : "slow"}`}><div className="val">{selected ? "✓" : `${elapsed}s`}</div><div className="lbl">Time</div></div>
+      </div>
+      <div className="card">
+        {q.type === "analogy"          && <VRAnalogy   q={q} selected={selected} onAnswer={handleAnswer} />}
+        {q.type === "odd_one_out"      && <VROddOneOut  q={q} selected={selected} onAnswer={handleAnswer} />}
+        {(q.type === "antonym_pair" || q.type === "synonym_pair")          && <VRWordPair  q={q} selected={selected} onAnswer={handleAnswer} />}
+        {(q.type === "letter_sequence" || q.type === "number_sequence")    && <VRSequence  q={q} selected={selected} onAnswer={handleAnswer} />}
+        {!selected && <div className="hint-row">Tap your answer</div>}
+        {selected && (
+          <>
+            <div className={`result-block ${isCorrect ? "correct" : "wrong"}`}>
+              <div className="result-icon">{isCorrect ? "✓" : "✗"}</div>
+              <div className="result-title">{isCorrect ? "Correct!" : "Not quite."}</div>
+              {!isCorrect && <div className="result-correct">The answer was: <strong>{q.correct}</strong></div>}
+              {q.type === "odd_one_out" && q.explanation && <div className="result-word">{q.explanation}</div>}
+              {elapsed > 30 && <div className="slow-flag">⏱ {elapsed}s — aim for under 30s</div>}
+            </div>
+            {aiEnabled && (aiLoading || aiCoach) && (
+              <div className="ai-box">
+                <div className="ai-label">✦ AI Coach</div>
+                {aiLoading ? <div className="pulsing" style={{ opacity:0.6, fontStyle:"italic" }}>Thinking...</div> : <div>{aiCoach}</div>}
+              </div>
+            )}
+            <button className="next-btn" onClick={() => idx + 1 >= queue.length ? setDone(true) : setIdx(i => i + 1)}>
+              {idx + 1 >= queue.length ? "See results →" : "Next →"}
             </button>
           </>
         )}
@@ -2631,14 +3314,27 @@ STUDENT DATA: Baseline 54% (target 85%). Vocab 39% — P1 Critical. Maths 60% (7
 
 const YEAR_GROUPS = ["Year 3", "Year 4", "Year 5", "Year 6", "Year 7"];
 
-// ─── PROFILE CREATOR ─────────────────────────────────────────────────────────
-function ProfileCreator({ onSave, onCancel }) {
-  const [name, setName] = useState("");
-  const [age, setAge] = useState("");
-  const [yearGroup, setYearGroup] = useState("");
-  const [avatar, setAvatar] = useState(PROFILE_AVATARS[0]);
-  const [colour, setColour] = useState(PROFILE_COLOURS[0]);
-  const canSave = name.trim() && age && yearGroup;
+// ─── PROFILE CREATOR / EDITOR ────────────────────────────────────────────────
+// Pass `initial` to edit an existing profile; omit to create a new one.
+// Pass `onResetProgress` (edit mode only) to wire the reset button.
+function ProfileCreator({ onSave, onCancel, initial, onResetProgress }) {
+  const isEditing = !!initial;
+  const [name,      setName]      = useState(initial?.name      || "");
+  const [birthdate, setBirthdate] = useState(initial?.birthdate || "");
+  const [yearGroup, setYearGroup] = useState(initial?.yearGroup || "");
+  const [avatar,    setAvatar]    = useState(initial?.avatar    || PROFILE_AVATARS[0]);
+  const [colour,    setColour]    = useState(initial?.colour    || PROFILE_COLOURS[0]);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const canSave = name.trim() && yearGroup;
+  const today = new Date().toISOString().split("T")[0]; // max birthdate = today
+  const minDate = new Date(Date.now() - 16 * 365.25 * 86400000).toISOString().split("T")[0];
+  const handleSave = () => {
+    const saved = isEditing
+      ? { ...initial, name: name.trim(), birthdate, yearGroup, avatar, colour }
+      : { id: makeProfileId(), name: name.trim(), birthdate, yearGroup, avatar, colour, createdAt: Date.now() };
+    onSave(saved);
+  };
+  const handleReset = () => { onResetProgress(initial.id); onCancel(); };
   return (
     <div className="creator-panel">
       <div className="creator-label">Name</div>
@@ -2651,16 +3347,15 @@ function ProfileCreator({ onSave, onCancel }) {
         autoFocus
       />
       <div style={{ display:"flex", gap:8, marginBottom:0 }}>
-        <div style={{ flex:1 }}>
-          <div className="creator-label">Age</div>
+        <div style={{ flex:2 }}>
+          <div className="creator-label">Date of birth</div>
           <input
             className="creator-input"
-            type="number"
-            min={5}
-            max={16}
-            placeholder="e.g. 9"
-            value={age}
-            onChange={e => setAge(e.target.value)}
+            type="date"
+            min={minDate}
+            max={today}
+            value={birthdate}
+            onChange={e => setBirthdate(e.target.value)}
             style={{ marginBottom:14 }}
           />
         </div>
@@ -2691,33 +3386,51 @@ function ProfileCreator({ onSave, onCancel }) {
       </div>
       <div className="creator-actions">
         <button className="creator-cancel" onClick={onCancel}>Cancel</button>
-        <button
-          className="creator-save"
-          disabled={!canSave}
-          onClick={() => onSave({ id: makeProfileId(), name: name.trim(), age: Number(age), yearGroup, avatar, colour, createdAt: Date.now() })}
-        >Create profile →</button>
+        <button className="creator-save" disabled={!canSave} onClick={handleSave}>
+          {isEditing ? "Save changes →" : "Create profile →"}
+        </button>
       </div>
+      {isEditing && onResetProgress && (
+        <div className="reset-zone">
+          {confirmReset ? (
+            <div className="reset-confirm">
+              <div className="reset-confirm-msg">Erase all progress for {initial.name}?</div>
+              <button className="reset-no" onClick={() => setConfirmReset(false)}>Cancel</button>
+              <button className="reset-yes" onClick={handleReset}>Erase</button>
+            </div>
+          ) : (
+            <button className="reset-btn" onClick={() => setConfirmReset(true)}>
+              Reset progress
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── PROFILE SELECTOR ────────────────────────────────────────────────────────
-function ProfileSelector({ profiles, activeProfileId, leitnerBoxes, onSelect, onCreateProfile, onClose }) {
+function ProfileSelector({ profiles, activeProfileId, leitnerBoxes, onSelect, onCreateProfile, onEditProfile, onResetProgress, onClose }) {
   const [creating, setCreating] = useState(false);
-  const handleSave = (newProfile) => {
-    onCreateProfile(newProfile);
-    setCreating(false);
+  const [editing,  setEditing]  = useState(null); // profile object being edited
+  const handleSave = (profile) => {
+    if (editing) { onEditProfile(profile); setEditing(null); }
+    else         { onCreateProfile(profile); setCreating(false); }
   };
+  const handleCancel = () => { setCreating(false); setEditing(null); };
+  const inForm = creating || !!editing;
   return (
     <div className="profile-overlay" onClick={e => e.target === e.currentTarget && onClose && onClose()}>
       <div className="profile-panel">
         <button className="profile-close" onClick={onClose}>✕</button>
-        <div className="profile-panel-title">{creating ? "New Profile" : "Profiles"}</div>
-        <div className="profile-panel-sub">
-          {creating ? "Who's this for?" : "Pick a profile to continue"}
+        <div className="profile-panel-title">
+          {creating ? "New Profile" : editing ? "Edit Profile" : "Profiles"}
         </div>
-        {creating ? (
-          <ProfileCreator onSave={handleSave} onCancel={() => setCreating(false)} />
+        <div className="profile-panel-sub">
+          {inForm ? "Fill in the details below" : "Pick a profile to continue"}
+        </div>
+        {inForm ? (
+          <ProfileCreator onSave={handleSave} onCancel={handleCancel} initial={editing || undefined} onResetProgress={editing ? onResetProgress : undefined} />
         ) : (
           <>
             <div className="profile-list">
@@ -2725,15 +3438,17 @@ function ProfileSelector({ profiles, activeProfileId, leitnerBoxes, onSelect, on
                 const boxes = p.id === activeProfileId ? leitnerBoxes : {};
                 const mastered = VOCAB_BANK.filter(w => isMastered(w, boxes[w.word])).length;
                 const isActive = p.id === activeProfileId;
+                const age = getProfileAge(p);
                 return (
                   <div key={p.id} className={`profile-card${isActive ? " active" : ""}`} onClick={() => onSelect(p)}>
                     <div className="pc-avatar">{p.avatar}</div>
-                    <div>
+                    <div style={{ flex:1, minWidth:0 }}>
                       <div className="pc-name">{p.name}</div>
                       <div className="pc-stats">
-                        {p.yearGroup ? `${p.yearGroup}${p.age ? `, age ${p.age}` : ""} · ` : ""}{isActive ? `${mastered} mastered` : "Tap to switch"}
+                        {p.yearGroup ? `${p.yearGroup}${age ? `, age ${age}` : ""} · ` : ""}{isActive ? `${mastered} mastered` : "Tap to switch"}
                       </div>
                     </div>
+                    <button className="pc-edit" title="Edit profile" onClick={e => { e.stopPropagation(); setEditing(p); }}>✏️</button>
                     {isActive && <div className="pc-check">✓</div>}
                   </div>
                 );
@@ -2747,15 +3462,144 @@ function ProfileSelector({ profiles, activeProfileId, leitnerBoxes, onSelect, on
   );
 }
 
+// ─── QUESTION PREVIEW (tutor tab) ─────────────────────────────────────────────
+const VR_PREVIEW_TYPES = [
+  { id:"antonym_pair",    label:"Antonym pair"    },
+  { id:"synonym_pair",    label:"Synonym pair"    },
+  { id:"letter_sequence", label:"Letter sequence" },
+  { id:"number_sequence", label:"Number sequence" },
+  { id:"analogy",         label:"Analogy"         },
+  { id:"odd_one_out",     label:"Odd one out"     },
+];
+const VOCAB_PREVIEW_TYPES = [
+  { id:"synonym",   label:"Synonym"   },
+  { id:"antonym",   label:"Antonym"   },
+  { id:"definition",label:"Definition"},
+  { id:"fillblank", label:"Fill blank"},
+];
+
+function QuestionPreview({ maxDifficulty }) {
+  const [domain, setDomain]       = useState("vr");
+  const [qType, setQType]         = useState("antonym_pair");
+  const [difficulty, setDifficulty] = useState(3);
+  const [question, setQuestion]   = useState(null);
+  const [error, setError]         = useState(null);
+
+  const types = domain === "vr" ? VR_PREVIEW_TYPES : VOCAB_PREVIEW_TYPES;
+
+  const handleDomainChange = (d) => {
+    setDomain(d);
+    setQType(d === "vr" ? "antonym_pair" : "synonym");
+    setQuestion(null); setError(null);
+  };
+
+  const generate = () => {
+    setError(null);
+    try {
+      let q = null;
+      if (domain === "vocab") {
+        const candidates = VOCAB_BANK.filter(w => w.difficulty <= difficulty);
+        if (!candidates.length) { setError("No words at this difficulty."); return; }
+        const word = candidates[Math.floor(Math.random() * candidates.length)];
+        q = buildQuestion(word, qType);
+        if (!q) { setError("Could not generate this question type for this word — try again."); return; }
+      } else {
+        if (qType === "antonym_pair") {
+          const pool = ANTONYM_BANK.filter(b => b.difficulty <= difficulty);
+          if (!pool.length) { setError("No antonym items at this difficulty."); return; }
+          const item = pool[Math.floor(Math.random() * pool.length)];
+          const correct = item.antonyms[Math.floor(Math.random() * item.antonyms.length)];
+          const distractors = shuffle(item.synonymPool.filter(d => d !== correct)).slice(0, 3);
+          q = { ...item, correct, options: shuffle([correct, ...distractors]) };
+        } else if (qType === "synonym_pair") {
+          const pool = SYNONYM_BANK.filter(b => b.difficulty <= difficulty);
+          if (!pool.length) { setError("No synonym items at this difficulty."); return; }
+          const item = pool[Math.floor(Math.random() * pool.length)];
+          const correct = item.synonyms[Math.floor(Math.random() * item.synonyms.length)];
+          const distractors = shuffle(item.antonymPool.filter(d => d !== correct)).slice(0, 3);
+          q = { ...item, correct, options: shuffle([correct, ...distractors]) };
+        } else if (qType === "letter_sequence") {
+          q = generateLetterSequence(difficulty);
+        } else if (qType === "number_sequence") {
+          q = generateNumberSequence(difficulty);
+        } else if (qType === "analogy") {
+          const pool = VR_BANK.filter(b => b.type === "analogy" && b.difficulty <= difficulty);
+          if (!pool.length) { setError("No analogy items at this difficulty."); return; }
+          const item = pool[Math.floor(Math.random() * pool.length)];
+          q = { ...item, options: shuffle([item.correct, ...item.distractors]) };
+        } else if (qType === "odd_one_out") {
+          const pool = VR_BANK.filter(b => b.type === "odd_one_out" && b.difficulty <= difficulty);
+          if (!pool.length) { setError("No odd-one-out items at this difficulty."); return; }
+          const item = pool[Math.floor(Math.random() * pool.length)];
+          q = { ...item, displayWords: shuffle([...item.words]) };
+        }
+      }
+      if (q) setQuestion(q);
+    } catch (e) { setError("Generation error — check console."); console.error(e); }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-title">Preview Questions</div>
+      <div className="card-sub">Test each question type at any difficulty — answer is shown immediately</div>
+      <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap", marginTop:12 }}>
+        <select className="preview-select" value={domain} onChange={e => handleDomainChange(e.target.value)}>
+          <option value="vr">Verbal Reasoning</option>
+          <option value="vocab">Vocabulary</option>
+        </select>
+        <select className="preview-select" value={qType} onChange={e => { setQType(e.target.value); setQuestion(null); setError(null); }}>
+          {types.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+        </select>
+        <select className="preview-select" value={difficulty} onChange={e => { setDifficulty(+e.target.value); setQuestion(null); setError(null); }}>
+          {[1,2,3,4,5].map(d => <option key={d} value={d}>Difficulty {d}</option>)}
+        </select>
+      </div>
+      <button className="next-btn" style={{ width:"100%", marginBottom:14 }} onClick={generate}>
+        Generate example →
+      </button>
+      {error && <div style={{ color:"var(--red)", fontSize:13, marginBottom:10 }}>{error}</div>}
+      {question && (
+        <div style={{ border:"2px solid var(--border)", borderRadius:"var(--radius-sm)", overflow:"hidden" }}>
+          <div style={{ background:"var(--ink)", borderRadius:"var(--radius-sm) var(--radius-sm) 0 0", padding:"18px 20px 16px" }}>
+            {(question.type === "antonym_pair" || question.type === "synonym_pair") && <VRWordPair q={question} selected={question.correct} onAnswer={() => {}} />}
+            {(question.type === "letter_sequence" || question.type === "number_sequence") && <VRSequence q={question} selected={question.correct} onAnswer={() => {}} />}
+            {question.type === "analogy" && <VRAnalogy q={question} selected={question.correct} onAnswer={() => {}} />}
+            {question.type === "odd_one_out" && <VROddOneOut q={question} selected={question.correct} onAnswer={() => {}} />}
+          </div>
+          {domain === "vocab" && question.options && (
+            <div style={{ padding:"12px 14px 4px" }}>
+              <div className="options-grid">
+                {question.options.map(opt => (
+                  <div key={opt} className={`opt-card${opt === question.correct ? " correct" : ""}`}>
+                    <div className="opt-top"><span className="opt-word">{opt}</span></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{ padding:"10px 14px", background:"var(--green-soft)", fontSize:13, fontWeight:700, color:"var(--green)" }}>
+            ✓ Correct answer: {question.correct}
+          </div>
+        </div>
+      )}
+      {question && (
+        <button className="action-btn" style={{ marginTop:10, width:"100%" }} onClick={generate}>Next example →</button>
+      )}
+    </div>
+  );
+}
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [mode, setMode] = useState("student");
   const [tab, setTab] = useState("practice");
   const [aiEnabled, setAiEnabled] = useState(true);
   const [leitnerBoxes, setLeitnerBoxes] = useState({});
+  const [vrLeitnerBoxes, setVrLeitnerBoxes] = useState({});
   const [sessionHistory, setSessionHistory] = useState([]);
   const [streak, setStreak] = useState({ count: 0, lastDate: null });
   const [practising, setPractising] = useState(false);
+  const [activeDomain, setActiveDomain] = useState("vocab");
   const [loaded, setLoaded] = useState(false);
 
   // v1.6 profiles
@@ -2766,10 +3610,12 @@ export default function App() {
   // Load user data for a given profile
   const loadUserData = async (prof) => {
     const keys = getUserStorageKeys(prof.id);
-    const boxes   = await storageGet(keys.leitnerBoxes)   || {};
-    const history = await storageGet(keys.sessionHistory) || [];
-    const streakData = await storageGet(keys.streakData)  || { count: 0, lastDate: null };
+    const boxes      = await storageGet(keys.leitnerBoxes)   || {};
+    const vrBoxes    = await storageGet(keys.vrLeitner)       || {};
+    const history    = await storageGet(keys.sessionHistory) || [];
+    const streakData = await storageGet(keys.streakData)     || { count: 0, lastDate: null };
     setLeitnerBoxes(boxes);
+    setVrLeitnerBoxes(vrBoxes);
     setSessionHistory(history);
     setStreak(streakData);
   };
@@ -2808,26 +3654,44 @@ export default function App() {
 
   useEffect(() => { setTab(mode === "student" ? "practice" : "dashboard"); setPractising(false); }, [mode]);
 
-  const handleSessionEnd = async (results, aidLog) => {
+  const handleSessionEnd = async (domain, results, aidLog) => {
     const correct = results.filter(r => r.correct).length;
-    const newBoxes = { ...leitnerBoxes };
-    results.forEach(r => {
-      const cur = newBoxes[r.word] || { box: 0, lastSeen: 0, formats: {} };
-      const newFormats = { ...(cur.formats || {}) };
-      if (r.correct) newFormats[r.type] = Date.now();
-      newBoxes[r.word] = {
-        box: r.correct ? Math.min(cur.box + 1, 5) : 0,
-        lastSeen: Date.now(),
-        formats: r.correct ? newFormats : {}, // wrong answer resets format progress too
-      };
-    });
     const today = new Date().toDateString();
     const yesterday = new Date(Date.now() - 86400000).toDateString();
     const newStreak = { count: streak.lastDate === yesterday ? streak.count + 1 : streak.lastDate === today ? streak.count : 1, lastDate: today };
-    const newHistory = [...sessionHistory, { date: Date.now(), correct, total: results.length, aidLog }];
-    setLeitnerBoxes(newBoxes); setStreak(newStreak); setSessionHistory(newHistory);
+    const newHistory = [...sessionHistory, { date: Date.now(), correct, total: results.length, aidLog, domain }];
     const userKeys = getUserStorageKeys(profile.id);
-    await storageSet(userKeys.leitnerBoxes,   newBoxes);
+
+    if (domain === "vocab") {
+      const newBoxes = { ...leitnerBoxes };
+      results.forEach(r => {
+        const cur = newBoxes[r.word] || { box: 0, lastSeen: 0, formats: {} };
+        const newFormats = { ...(cur.formats || {}) };
+        if (r.correct) newFormats[r.type] = Date.now();
+        newBoxes[r.word] = {
+          box: r.correct ? Math.min(cur.box + 1, 5) : 0,
+          lastSeen: Date.now(),
+          formats: r.correct ? newFormats : {},
+        };
+      });
+      setLeitnerBoxes(newBoxes);
+      await storageSet(userKeys.leitnerBoxes, newBoxes);
+    } else if (domain === "vr") {
+      const newVrBoxes = { ...vrLeitnerBoxes };
+      results.forEach(r => {
+        if (!r.id) return; // generated sequences (letter/number) have no stable id — skip Leitner
+        const cur = newVrBoxes[r.id] || { box: 0, lastSeen: 0 };
+        newVrBoxes[r.id] = {
+          box: r.correct ? Math.min(cur.box + 1, 5) : 0,
+          lastSeen: Date.now(),
+        };
+      });
+      setVrLeitnerBoxes(newVrBoxes);
+      await storageSet(userKeys.vrLeitner, newVrBoxes);
+    }
+
+    setStreak(newStreak);
+    setSessionHistory(newHistory);
     await storageSet(userKeys.streakData,     newStreak);
     await storageSet(userKeys.sessionHistory, newHistory);
     setPractising(false);
@@ -2836,6 +3700,7 @@ export default function App() {
   const handleSwitchProfile = async (newProfile) => {
     setLoaded(false);
     setLeitnerBoxes({});
+    setVrLeitnerBoxes({});
     setSessionHistory([]);
     setStreak({ count: 0, lastDate: null });
     setPractising(false);
@@ -2853,11 +3718,39 @@ export default function App() {
     await handleSwitchProfile(newProfile);
   };
 
-  const dueCount = loaded ? getDueWords(leitnerBoxes).length : 0;
-  const masteredCount = VOCAB_BANK.filter(w => isMastered(w, leitnerBoxes[w.word])).length;
+  const handleEditProfile = async (updatedProfile) => {
+    const updatedProfiles = profiles.map(p => p.id === updatedProfile.id ? updatedProfile : p);
+    setProfiles(updatedProfiles);
+    await storageSet(PROFILES_KEY, updatedProfiles);
+    // If editing the active profile, refresh it in state (triggers maxDifficulty recompute)
+    if (updatedProfile.id === profile?.id) setProfile(updatedProfile);
+  };
+
+  const handleResetProfile = async (profileId) => {
+    const userKeys = getUserStorageKeys(profileId);
+    await storageSet(userKeys.leitnerBoxes,   {});
+    await storageSet(userKeys.vrLeitner,      {});
+    await storageSet(userKeys.sessionHistory, []);
+    await storageSet(userKeys.streakData,     { count: 0, lastDate: null });
+    // If resetting the active profile, wipe in-memory state immediately
+    if (profileId === profile?.id) {
+      setLeitnerBoxes({});
+      setVrLeitnerBoxes({});
+      setSessionHistory([]);
+      setStreak({ count: 0, lastDate: null });
+      setPractising(false);
+    }
+  };
+
+  const maxDifficulty = getMaxDifficulty(profile);
+  const dueCount = loaded ? getDueWords(leitnerBoxes, maxDifficulty).length : 0;
+  const masteredCount = VOCAB_BANK.filter(w => w.difficulty <= maxDifficulty && isMastered(w, leitnerBoxes[w.word])).length;
+  const vrDueCount = loaded ? getDueVRQuestions(vrLeitnerBoxes, maxDifficulty).length : 0;
+  const vrMasteredCount = [...VR_BANK, ...ANTONYM_BANK, ...SYNONYM_BANK]
+    .filter(q => q.difficulty <= maxDifficulty && (vrLeitnerBoxes[q.id]?.box ?? 0) >= 3).length;
   const todayDone = streak.lastDate === new Date().toDateString();
   const sTabs = [{ id:"practice", label:"Practice" }, { id:"dashboard", label:"Progress" }];
-  const cTabs = [{ id:"dashboard", label:"Dashboard" }, { id:"advisor", label:"AI Advisor" }];
+  const cTabs = [{ id:"dashboard", label:"Dashboard" }, { id:"advisor", label:"AI Advisor" }, { id:"preview", label:"Preview Qs" }];
 
   return (
     <div className="app">
@@ -2888,6 +3781,8 @@ export default function App() {
           leitnerBoxes={leitnerBoxes}
           onSelect={handleSwitchProfile}
           onCreateProfile={handleCreateProfile}
+          onEditProfile={handleEditProfile}
+          onResetProgress={handleResetProfile}
           onClose={() => setShowProfileSelect(false)}
         />
       )}
@@ -2903,33 +3798,50 @@ export default function App() {
           <div className="empty-state"><div className="empty-icon pulsing">📚</div><div className="empty-title">Loading...</div></div>
         ) : tab === "practice" && mode === "student" ? (
           practising ? (
-            <VocabSession leitnerBoxes={leitnerBoxes} onSessionEnd={handleSessionEnd} aiEnabled={aiEnabled} mode={mode} />
+            activeDomain === "vocab"
+              ? <VocabSession leitnerBoxes={leitnerBoxes} onSessionEnd={(r, l) => handleSessionEnd("vocab", r, l)} aiEnabled={aiEnabled} mode={mode} maxDifficulty={maxDifficulty} />
+              : <VRSession vrLeitnerBoxes={vrLeitnerBoxes} onSessionEnd={(r, l) => handleSessionEnd("vr", r, l)} aiEnabled={aiEnabled} mode={mode} maxDifficulty={maxDifficulty} />
           ) : (
             <>
               {streak.count >= 2 && <div className="streak-banner">🔥 {streak.count}-day streak — keep it up!</div>}
               <div className="card">
-                <div className="card-title">Word Practice</div>
-                <div className="card-sub">Synonyms and antonyms — your most important area right now</div>
-                <div className="stats-row">
-                  <div className="stat-pill good"><div className="val">{masteredCount}</div><div className="lbl">Mastered</div></div>
-                  <div className="stat-pill warn"><div className="val">{dueCount}</div><div className="lbl">Due now</div></div>
-                  <div className="stat-pill"><div className="val">{VOCAB_BANK.length}</div><div className="lbl">In bank</div></div>
+                <div className="card-title">Ready to practise?</div>
+                <div className="card-sub">Your session is picked automatically — vocab and VR alternate each time</div>
+                <div style={{ display:"flex", gap:10, margin:"14px 0 4px", flexWrap:"wrap" }}>
+                  <div className="info-card" style={{ flex:1 }}>
+                    <div className="lbl">📚 Vocabulary due</div>
+                    <div className="val" style={{ fontFamily:"Fraunces,serif", fontSize:20, color: dueCount ? "var(--accent)" : "var(--green)" }}>
+                      {dueCount || "✓"}
+                    </div>
+                  </div>
+                  <div className="info-card" style={{ flex:1 }}>
+                    <div className="lbl">🧠 VR due</div>
+                    <div className="val" style={{ fontFamily:"Fraunces,serif", fontSize:20, color: vrDueCount ? "var(--purple)" : "var(--green)" }}>
+                      {vrDueCount || "✓"}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ padding:"9px 11px", background:"var(--cream)", borderRadius:7, fontSize:13, marginBottom:14, lineHeight:1.6 }}>
-                  {!dueCount ? "All caught up! Come back tomorrow for new words." :
-                   todayDone ? "Great work today! Go again to keep the streak alive. 🎯" :
-                   `${dueCount} words ready. Use 🔊 to hear, 📖 for the meaning, 💡 for a simple hint — then pick your answer.`}
-                </div>
-                <button className="action-btn" onClick={() => dueCount && setPractising(true)} disabled={!dueCount}>
-                  {dueCount ? `Start session (${dueCount} words) →` : "No words due — check back tomorrow"}
-                </button>
+                {(dueCount > 0 || vrDueCount > 0) ? (
+                  <button className="next-btn" style={{ marginTop:12 }} onClick={() => {
+                    const domain = pickDomain(dueCount, vrDueCount, sessionHistory);
+                    if (domain) { setActiveDomain(domain); setPractising(true); }
+                  }}>
+                    Practice →
+                  </button>
+                ) : (
+                  <div style={{ textAlign:"center", padding:"14px 0 4px", color:"var(--green)", fontWeight:700, fontSize:15 }}>
+                    ✓ All caught up — come back tomorrow!
+                  </div>
+                )}
               </div>
               {sessionHistory.length > 0 && (
                 <div className="card">
                   <div className="card-title" style={{ fontSize:15 }}>Recent Sessions</div>
                   {sessionHistory.slice(-4).reverse().map((s, i) => (
                     <div key={i} className="domain-row">
-                      <div className="domain-name" style={{ fontSize:11 }}>{new Date(s.date).toLocaleDateString("en-GB")}</div>
+                      <div className="domain-name" style={{ fontSize:11 }}>
+                        {s.domain === "vr" ? "🧠 " : "📚 "}{new Date(s.date).toLocaleDateString("en-GB")}
+                      </div>
                       <div className="bar-wrap"><div className="bar-fill" style={{ width:`${Math.round(s.correct/s.total*100)}%`, background: s.correct/s.total>=0.7?"var(--green)":"var(--gold)" }} /></div>
                       <div className="domain-pct">{Math.round(s.correct/s.total*100)}%</div>
                       <div className="domain-gap">{s.correct}/{s.total}</div>
@@ -2943,6 +3855,8 @@ export default function App() {
           <Dashboard leitnerBoxes={leitnerBoxes} sessionHistory={sessionHistory} />
         ) : tab === "advisor" ? (
           <CoachAdvisor sessionHistory={sessionHistory} leitnerBoxes={leitnerBoxes} />
+        ) : tab === "preview" ? (
+          <QuestionPreview maxDifficulty={maxDifficulty} />
         ) : null}
       </div>
     </div>
