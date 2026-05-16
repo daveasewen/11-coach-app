@@ -2540,12 +2540,24 @@ function makeDistractors(wordEntry, field) {
 function buildQuestion(wordEntry, qType) {
   if (qType === "synonym") {
     const correct = wordEntry.synonyms[Math.floor(Math.random() * wordEntry.synonyms.length)];
-    return { type: "synonym", word: wordEntry.word, correct, options: shuffle([correct, ...makeDistractors(wordEntry, "synonyms")]) };
+    // Distractors: target's own antonyms first (opposite direction = obviously wrong as synonym),
+    // then supplement from makeDistractors using antonyms field.
+    const ownPool = (wordEntry.antonyms || []).filter(a => a !== correct);
+    const fallback = makeDistractors(wordEntry, "antonyms");
+    const distractors = shuffle([...new Set([...ownPool, ...fallback])]).slice(0, 3);
+    if (distractors.length < 3) return null;
+    return { type: "synonym", word: wordEntry.word, correct, options: shuffle([correct, ...distractors]) };
   }
   if (qType === "antonym") {
     if (!wordEntry.antonyms?.length) return null;
     const correct = wordEntry.antonyms[Math.floor(Math.random() * wordEntry.antonyms.length)];
-    return { type: "antonym", word: wordEntry.word, correct, options: shuffle([correct, ...makeDistractors(wordEntry, "antonyms")]) };
+    // Distractors: target's own synonyms first (same direction = obviously wrong as antonym),
+    // then supplement from makeDistractors using synonyms field.
+    const ownPool = (wordEntry.synonyms || []).filter(s => s !== correct);
+    const fallback = makeDistractors(wordEntry, "synonyms");
+    const distractors = shuffle([...new Set([...ownPool, ...fallback])]).slice(0, 3);
+    if (distractors.length < 3) return null;
+    return { type: "antonym", word: wordEntry.word, correct, options: shuffle([correct, ...distractors]) };
   }
   if (qType === "definition") {
     if (!wordEntry.definition) return null;
