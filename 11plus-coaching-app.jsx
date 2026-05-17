@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 
-const VERSION = "1.12.0";
+const VERSION = "1.13.0";
 
 const BASELINE = {
   overall: { score: 108, total: 200, pct: 54 },
@@ -4537,7 +4537,7 @@ function ProfileCreator({ onSave, onCancel, initial, onResetProgress }) {
 }
 
 // ─── PROFILE SELECTOR ────────────────────────────────────────────────────────
-function ProfileSelector({ profiles, activeProfileId, leitnerBoxes, onSelect, onCreateProfile, onEditProfile, onResetProgress, onClose }) {
+function ProfileSelector({ profiles, activeProfileId, leitnerBoxes, onSelect, onCreateProfile, onEditProfile, onResetProgress, onClose, onExport, onImport, importSuccess }) {
   const [creating, setCreating] = useState(false);
   const [editing,  setEditing]  = useState(null); // profile object being edited
   const handleSave = (profile) => {
@@ -4582,6 +4582,23 @@ function ProfileSelector({ profiles, activeProfileId, leitnerBoxes, onSelect, on
               })}
             </div>
             <button className="add-profile-btn" onClick={() => setCreating(true)}>+ Add profile</button>
+            <div style={{ borderTop:'1px solid var(--border)', margin:'14px 0 10px' }} />
+            <div style={{ fontSize:11, fontWeight:700, color:'var(--ink-soft)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Data backup</div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button
+                className="creator-cancel"
+                style={{ flex:1, fontSize:12, padding:'7px 0' }}
+                onClick={onExport}
+                title="Download all progress as a JSON file"
+              >⬇ Export</button>
+              <label
+                style={{ flex:1, fontSize:12, padding:'7px 0', textAlign:'center', borderRadius:8, border:'1.5px solid var(--border)', cursor:'pointer', fontWeight:600, color:'var(--ink-soft)', background:'var(--surface)' }}
+                title="Restore progress from a previously exported file"
+              >
+                {importSuccess ? '✓ Imported!' : '⬆ Import'}
+                <input type="file" accept=".json" style={{ display:'none' }} onChange={onImport} />
+              </label>
+            </div>
           </>
         )}
       </div>
@@ -4732,11 +4749,56 @@ function QuestionPreview({ maxDifficulty }) {
   );
 }
 
+// ─── AI KEY MODAL (Phase 0) ───────────────────────────────────────────────────
+// Shown when user tries to enable AI coaching without a key configured.
+// Not shown in Cowork mode (no key needed there).
+function AiKeyModal({ onSave, onDismiss }) {
+  const [key, setKey] = useState('');
+  const canSave = key.trim().startsWith('sk-ant-') || key.trim().startsWith('sk-');
+  const handleSave = () => {
+    if (!canSave) return;
+    localStorage.setItem('11plus:api-key', key.trim());
+    onSave();
+  };
+  return (
+    <div className="profile-overlay" onClick={e => e.target === e.currentTarget && onDismiss()}>
+      <div className="profile-panel" style={{ maxWidth: 420 }}>
+        <button className="profile-close" onClick={onDismiss}>✕</button>
+        <div className="profile-panel-title">Enable AI Coaching</div>
+        <div className="profile-panel-sub">AI coaching gives personalised hints after each answer. It uses the Anthropic API — you'll need your own key.</div>
+        <div style={{ margin:'18px 0 6px', fontSize:12, fontWeight:600, color:'var(--ink-soft)', textTransform:'uppercase', letterSpacing:'0.06em' }}>
+          Anthropic API Key
+        </div>
+        <input
+          type="password"
+          placeholder="sk-ant-..."
+          value={key}
+          onChange={e => setKey(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSave()}
+          style={{ width:'100%', boxSizing:'border-box', padding:'10px 12px', borderRadius:8, border:'1.5px solid var(--border)', fontSize:13, fontFamily:'monospace', marginBottom:6 }}
+          autoFocus
+        />
+        <div style={{ fontSize:11, color:'var(--ink-soft)', marginBottom:18, lineHeight:1.4 }}>
+          Your key is stored locally in this browser only and never sent anywhere except the Anthropic API.{' '}
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" style={{ color:'var(--accent)' }}>Get a key →</a>
+        </div>
+        <div style={{ display:'flex', gap:10 }}>
+          <button className="creator-cancel" style={{ flex:1 }} onClick={onDismiss}>Not now</button>
+          <button className="creator-save" style={{ flex:2 }} disabled={!canSave} onClick={handleSave}>
+            Save &amp; enable AI →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [mode, setMode] = useState("student");
   const [tab, setTab] = useState("practice");
-  const [aiEnabled, setAiEnabled] = useState(true);
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [showAiKeyModal, setShowAiKeyModal] = useState(false);
   const [leitnerBoxes, setLeitnerBoxes] = useState({});
   const [vrLeitnerBoxes, setVrLeitnerBoxes] = useState({});
   const [sessionHistory, setSessionHistory] = useState([]);
@@ -4751,8 +4813,20 @@ export default function App() {
   const [profiles, setProfiles] = useState([]);
   const [showProfileSelect, setShowProfileSelect] = useState(false);
 
+  // v1.13 Phase 0: import success flash
+  const [importSuccess, setImportSuccess] = useState(false);
+
   // v1.12 progression state (per active profile, stored in its own key)
   const [progressionState, setProgressionState] = useState(null);
+
+  // v1.13 Phase 0: AI toggle — show key modal if no key configured and not in Cowork
+  const handleAiToggle = () => {
+    if (aiEnabled) { setAiEnabled(false); return; }
+    const hasCowork = typeof window !== 'undefined' && window.cowork && typeof window.cowork.askClaude === 'function';
+    const hasKey    = typeof window !== 'undefined' && typeof localStorage !== 'undefined' && !!localStorage.getItem('11plus:api-key');
+    if (hasCowork || hasKey) { setAiEnabled(true); }
+    else { setShowAiKeyModal(true); }
+  };
 
   // Load user data for a given profile
   const loadUserData = async (prof) => {
@@ -4927,6 +5001,53 @@ export default function App() {
     await storageSet(userKeys.progression, updated);
   };
 
+  // Phase 0: export all data for the active profile as a JSON file
+  const handleExportData = async () => {
+    if (!profile) return;
+    const keys = getUserStorageKeys(profile.id);
+    const payload = {
+      version: VERSION,
+      exportedAt: new Date().toISOString(),
+      profile,
+      leitnerBoxes:   await storageGet(keys.leitnerBoxes)   || {},
+      vrLeitner:      await storageGet(keys.vrLeitner)       || {},
+      sessionHistory: await storageGet(keys.sessionHistory) || [],
+      streakData:     await storageGet(keys.streakData)     || { count: 0, lastDate: null },
+      progression:    await storageGet(keys.progression)    || null,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `11plus-${profile.name.toLowerCase().replace(/\s+/g,'-')}-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Phase 0: import a previously exported JSON backup into the active profile
+  const handleImportData = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.leitnerBoxes) throw new Error('Unrecognised backup format');
+      const keys = getUserStorageKeys(profile.id);
+      await storageSet(keys.leitnerBoxes,   data.leitnerBoxes   || {});
+      await storageSet(keys.vrLeitner,      data.vrLeitner      || {});
+      await storageSet(keys.sessionHistory, data.sessionHistory || []);
+      await storageSet(keys.streakData,     data.streakData     || { count: 0, lastDate: null });
+      if (data.progression) await storageSet(keys.progression,  data.progression);
+      // Reload in-memory state from storage
+      await loadUserData(profile);
+      setImportSuccess(true);
+      setTimeout(() => setImportSuccess(false), 3000);
+    } catch (err) {
+      alert('Import failed: ' + err.message);
+    }
+    e.target.value = '';
+  };
+
   const maxDifficulty = getMaxDifficulty(profile);
   const dueCount = loaded ? getDueWords(leitnerBoxes, maxDifficulty).length : 0;
   const masteredCount = VOCAB_BANK.filter(w => w.difficulty <= maxDifficulty && isMastered(w, leitnerBoxes[w.word])).length;
@@ -4943,7 +5064,7 @@ export default function App() {
       <div className="header">
         <div className="logo">11<span>+</span> Coach <span className="ver">v{VERSION}</span></div>
         <div className="hdr-right">
-          <div className={`ai-pill ${aiEnabled ? "on" : "off"}`} onClick={() => setAiEnabled(e => !e)}>
+          <div className={`ai-pill ${aiEnabled ? "on" : "off"}`} onClick={handleAiToggle} title={aiEnabled ? "AI coaching on — click to disable" : "AI coaching off — click to enable"}>
             <div className="ai-dot" /> AI {aiEnabled ? "on" : "off"}
           </div>
           {profile && (
@@ -4959,6 +5080,13 @@ export default function App() {
         </div>
       </div>
 
+      {showAiKeyModal && (
+        <AiKeyModal
+          onSave={() => { setShowAiKeyModal(false); setAiEnabled(true); }}
+          onDismiss={() => setShowAiKeyModal(false)}
+        />
+      )}
+
       {showProfileSelect && (
         <ProfileSelector
           profiles={profiles}
@@ -4969,6 +5097,9 @@ export default function App() {
           onEditProfile={handleEditProfile}
           onResetProgress={handleResetProfile}
           onClose={() => setShowProfileSelect(false)}
+          onExport={handleExportData}
+          onImport={handleImportData}
+          importSuccess={importSuccess}
         />
       )}
 
