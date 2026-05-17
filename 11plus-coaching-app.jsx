@@ -2932,6 +2932,22 @@ function numberBracketGenerator(maxDifficulty) {
   const distractors = shuffle([...distSet]).slice(0, 3);
   while (distractors.length < 3) distractors.push(correct + 5 + distractors.length);
 
+  // Build a worked-step hint string using real numbers from row 1
+  const [ha, hb, hinner] = [pairs[0][0], pairs[0][1], inners[0]];
+  const bracketStepHint = {
+    mul:      `${ha} × ${hb} = ${hinner}`,
+    sum2:     `${ha} + ${hb} = ${ha+hb}, × 2 = ${hinner}`,
+    add:      `${ha} + ${hb} = ${hinner}`,
+    mulplus:  `${ha} × ${hb} = ${ha*hb}, + ${ha} = ${hinner}`,
+    mulmin:   `${ha} × ${hb} = ${ha*hb}, − ${ha} = ${hinner}`,
+    sumsq:    `${ha}² + ${hb}² = ${ha*ha} + ${hb*hb} = ${hinner}`,
+    diffsq:   `${ha} − ${hb} = ${ha-hb}, squared = ${hinner}`,
+    sqmul:    `${ha}² = ${ha*ha}, × ${hb} = ${hinner}`,
+    sqplus2k: `${ha}² = ${ha*ha}, + 2×${hb} = ${hinner}`,
+    sumsqd2:  `${ha} + ${hb} = ${ha+hb}, squared = ${(ha+hb)*(ha+hb)}, ÷ 2 = ${hinner}`,
+    cubesub:  `${ha}³ = ${ha*ha*ha}, − ${hb} = ${hinner}`,
+  }[rule.key] || `${ha} and ${hb} → ${hinner}`;
+
   return {
     id: null,
     type: "number_bracket",
@@ -2941,6 +2957,7 @@ function numberBracketGenerator(maxDifficulty) {
       { outer1: pairs[2][0], outer2: pairs[2][1], inner: null },
     ],
     rule: rule.label,
+    hint: `Rule: ${rule.label}. Using row 1: ${bracketStepHint}.`,
     correct,
     options: shuffle([correct, ...distractors]),
     difficulty: band,
@@ -4830,8 +4847,10 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
         } else if (q.type === "letters_numbers") {
           user = `Student got a Letters=Numbers question wrong. Code: ${q.rule}. Expression: ${q.expression}. Chose ${opt}, correct is ${q.correct}. Walk through the substitution and BIDMAS step in 1 sentence for a 10-year-old.`;
         } else if (q.type === "number_bracket") {
-          const exShown = q.examples.slice(0, 2).map(e => `${e.outer1}(${e.inner})${e.outer2}`).join("  ");
-          user = `Student got a number bracket puzzle wrong. Examples: ${exShown}. Rule: ${q.rule}. They saw ${q.examples[2].outer1}(?)${q.examples[2].outer2}, chose ${opt}, correct is ${q.correct}. Explain how the worked examples reveal the rule in 1 sentence for a 10-year-old.`;
+          const ex = q.examples;
+          const exShown = ex.slice(0, 2).map(e => `${e.outer1}(${e.inner})${e.outer2}`).join("  ");
+          const [qa, qb] = [ex[2].outer1, ex[2].outer2];
+          user = `Student got a number bracket puzzle wrong. The two worked examples were: ${exShown}. The question was ${qa}(?)${qb}. They chose ${opt}, correct is ${q.correct}. The rule is: ${q.rule}. Write a 2-sentence explanation for a 10-year-old: first show how to verify the rule against one worked example using actual numbers step by step (e.g. "In row 1, ${ex[0].outer1} and ${ex[0].outer2} give ${ex[0].inner} because..."), then show the same steps applied to ${qa} and ${qb} to get ${q.correct}. Keep it concrete with numbers, no algebra.`;
         } else if (q.type === "equation_completion") {
           user = `Student got an equation completion wrong. ${q.lhs} = ${q.rhs}. Chose ${opt}, correct is ${q.correct}. Show how to evaluate each side and solve for ? in 1 sentence for a 10-year-old.`;
         } else if (q.type === "letter_code_analogy") {
@@ -4923,6 +4942,7 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
               <div className="result-title">{isCorrect ? "Correct!" : isTimedOut ? "Time's up!" : "Not quite."}</div>
               {!isCorrect && <div className="result-correct">The answer was: <strong>{q.correct}</strong></div>}
               {q.type === "odd_one_out" && q.explanation && <div className="result-word">{q.explanation}</div>}
+              {q.type === "number_bracket" && !isCorrect && q.hint && <div className="result-word">{q.hint}</div>}
               {!timedMode && elapsed > 30 && <div className="slow-flag">⏱ {elapsed}s — aim for under 30s</div>}
             </div>
             {aiEnabled && (aiLoading || aiCoach) && (
