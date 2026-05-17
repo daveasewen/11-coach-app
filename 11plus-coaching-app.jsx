@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 
-const VERSION = "1.14.0";
+const VERSION = "1.15.0";
 
 const BASELINE = {
   overall: { score: 108, total: 200, pct: 54 },
@@ -247,7 +247,7 @@ const VOCAB_BANK = [
   { word: "prudent", definition: "Acting with care and thought for the future; wise", simpleDefinition: "Being sensible and thinking carefully before acting", synonyms: ["wise", "careful", "sensible", "cautious"], antonyms: ["foolish", "reckless", "careless", "imprudent"], difficulty: 3, pos: "adjective", example: "It is prudent to save some money each month." },
   { word: "pungent", definition: "Having a sharply strong taste or smell", simpleDefinition: "A very strong smell or taste that hits you straight away", synonyms: ["sharp", "strong", "acrid", "bitter"], antonyms: ["mild", "bland", "gentle", "subtle"], difficulty: 3, pos: "adjective", example: "The pungent smell of onions filled the kitchen." },
   { word: "quandary", definition: "A state of perplexity or uncertainty; a dilemma", simpleDefinition: "When you're stuck and don't know which choice to make", synonyms: ["dilemma", "uncertainty", "puzzle", "predicament"], antonyms: ["certainty", "solution", "clarity"], difficulty: 3, pos: "noun", example: "She was in a quandary about which offer to accept." },
-  { word: "ravenous", definition: "Extremely hungry; very eager for something", simpleDefinition: "So hungry you could eat absolutely anything", synonyms: ["starving", "famished", "voracious", "greedy"], antonyms: ["full", "satisfied", "content"], difficulty: 3, pos: "adjective", example: "After the match, the players were ravenous." },
+  { word: "ravenous", definition: "Extremely hungry; very eager for something", simpleDefinition: "So hungry you could eat absolutely anything", synonyms: ["starving", "famished", "voracious", "greedy"], antonyms: ["full", "satisfied", "content"], difficulty: 3, pos: "adjective", example: "Having skipped lunch and dinner, she was absolutely ravenous by the time she got home." },
   { word: "recede", definition: "To move back or gradually become more distant", simpleDefinition: "To slowly move away or get smaller", synonyms: ["retreat", "withdraw", "diminish", "fade"], antonyms: ["advance", "approach", "grow", "increase"], difficulty: 3, pos: "verb", example: "The flood waters began to recede after the storm." },
   { word: "reluctant", definition: "Unwilling and hesitant; not eager", simpleDefinition: "Not really wanting to do something", synonyms: ["unwilling", "hesitant", "disinclined", "loath"], antonyms: ["willing", "eager", "keen", "enthusiastic"], difficulty: 2, pos: "adjective", example: "He was reluctant to admit he was wrong." },
   { word: "remnant", definition: "A small remaining quantity of something; a surviving trace", simpleDefinition: "A small bit of something left over after the rest is gone", synonyms: ["remainder", "remains", "leftover", "trace"], antonyms: ["whole", "entirety", "all"], difficulty: 3, pos: "noun", example: "A remnant of the old wall still stood in the garden." },
@@ -3688,6 +3688,10 @@ const css = `
   .q-aid-btn { padding:3px 8px; border-radius:5px; border:1px solid rgba(255,255,255,0.25); background:rgba(255,255,255,0.1); font-size:12px; cursor:pointer; color:white; transition:all 0.1s; line-height:1; user-select:none; }
   .q-aid-btn:hover { background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.5); }
   .q-aid-btn.used { background:var(--gold-soft); border-color:var(--gold); color:var(--ink); }
+  .alphabet-row { display:flex; flex-wrap:wrap; gap:3px; margin-top:6px; animation:fadeIn 0.15s ease; }
+  .alpha-cell { display:flex; flex-direction:column; align-items:center; background:rgba(255,255,255,0.1); border-radius:4px; padding:2px 4px; min-width:22px; }
+  .alpha-letter { font-size:11px; font-weight:700; color:white; line-height:1.2; }
+  .alpha-num { font-size:9px; color:var(--gold); line-height:1.2; }
   .q-reveal { font-size:13px; color:rgba(255,255,255,0.85); font-style:italic; line-height:1.5; margin-bottom:4px; animation:fadeIn 0.15s ease; }
   .q-reveal.simple { font-style:normal; color:var(--gold); font-weight:500; }
   .result-word { font-size:12px; color:inherit; opacity:0.8; margin-top:3px; font-style:italic; }
@@ -4363,7 +4367,32 @@ function VRWordPair({ q, selected, onAnswer }) {
 }
 
 // ─── VR SEQUENCE (letter_sequence / number_sequence) ──────────────────────────
-function VRSequence({ q, selected, onAnswer }) {
+// ─── ALPHABET AID ─────────────────────────────────────────────────────────────
+function AlphabetAid({ onUsed }) {
+  const [show, setShow] = useState(false);
+  const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  const handleToggle = () => {
+    if (!show && onUsed) onUsed();
+    setShow(v => !v);
+  };
+  return (
+    <div>
+      <button className={`q-aid-btn${show ? " used" : ""}`} onClick={handleToggle}>🔤 Alphabet</button>
+      {show && (
+        <div className="alphabet-row">
+          {ALPHA.map((l, i) => (
+            <span key={l} className="alpha-cell">
+              <span className="alpha-letter">{l}</span>
+              <span className="alpha-num">{i + 1}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VRSequence({ q, selected, onAnswer, onAlphabetAid }) {
   const isLetter = q.type === "letter_sequence";
   const badge = isLetter ? "Letter Seq" : "Number Seq";
   const badgeCls = isLetter ? "badge-letterseq" : "badge-numseq";
@@ -4381,6 +4410,11 @@ function VRSequence({ q, selected, onAnswer }) {
           <span className="vr-seq-sep">→</span>
           <span className="vr-seq-blank">__</span>
         </div>
+        {isLetter && onAlphabetAid && (
+          <div className="q-aids" style={{ marginTop:8 }}>
+            <AlphabetAid onUsed={onAlphabetAid} />
+          </div>
+        )}
       </div>
       <div className="options-grid">
         {q.options.map(opt => {
@@ -4401,7 +4435,7 @@ function VRSequence({ q, selected, onAnswer }) {
 }
 
 // ─── VR LETTERS = NUMBERS ─────────────────────────────────────────────────────
-function VRLettersNumbers({ q, selected, onAnswer }) {
+function VRLettersNumbers({ q, selected, onAnswer, onAlphabetAid }) {
   return (
     <>
       <div className="q-header">
@@ -4415,6 +4449,11 @@ function VRLettersNumbers({ q, selected, onAnswer }) {
           <span className="vr-seq-sep">=</span>
           <span className="vr-eq-blank">?</span>
         </div>
+        {onAlphabetAid && (
+          <div className="q-aids" style={{ marginTop:8 }}>
+            <AlphabetAid onUsed={onAlphabetAid} />
+          </div>
+        )}
       </div>
       <div className="options-grid">
         {q.options.map(opt => {
@@ -4514,7 +4553,7 @@ function VREquationCompletion({ q, selected, onAnswer }) {
 }
 
 // ─── VR LETTER CODE ANALOGY ───────────────────────────────────────────────────
-function VRLetterCodeAnalogy({ q, selected, onAnswer }) {
+function VRLetterCodeAnalogy({ q, selected, onAnswer, onAlphabetAid }) {
   const fmt = (pair) => pair.join("");
   return (
     <>
@@ -4532,6 +4571,11 @@ function VRLetterCodeAnalogy({ q, selected, onAnswer }) {
           <span className="vr-sep">:</span>
           <span className="vr-blank">___</span>
         </div>
+        {onAlphabetAid && (
+          <div className="q-aids" style={{ marginTop:8 }}>
+            <AlphabetAid onUsed={onAlphabetAid} />
+          </div>
+        )}
       </div>
       <div className="options-grid">
         {q.options.map(opt => {
@@ -4563,11 +4607,13 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
   const [aiLoading, setAiLoading] = useState(false);
   const t0 = useRef(Date.now());
   const timeoutFired = useRef(false);
+  const alphabetAidUsed = useRef(false);
 
   useEffect(() => {
     if (!queue.length || idx >= queue.length) { setDone(true); return; }
     setSelected(null); setAiCoach(null); t0.current = Date.now();
     timeoutFired.current = false;
+    alphabetAidUsed.current = false;
   }, [idx, queue]);
 
   useEffect(() => {
@@ -4591,7 +4637,7 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
     const q = queue[idx];
     const isTimedOut = opt === "__timeout__";
     const isCorrect = !isTimedOut && opt === q.correct;
-    setResults(r => [...r, { id: q.id, correct: isCorrect, type: q.type, timeMs, timedOut: isTimedOut, isNextBand: q.isNextBand || false }]);
+    setResults(r => [...r, { id: q.id, correct: isCorrect, type: q.type, timeMs, timedOut: isTimedOut, isNextBand: q.isNextBand || false, alphabetAidUsed: alphabetAidUsed.current }]);
 
     if (aiEnabled) {
       setAiLoading(true);
@@ -4699,11 +4745,11 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
         {q.type === "analogy"                                              && <VRAnalogy   q={q} selected={selected} onAnswer={handleAnswer} />}
         {q.type === "odd_one_out"                                          && <VROddOneOut  q={q} selected={selected} onAnswer={handleAnswer} />}
         {(q.type === "antonym_pair" || q.type === "synonym_pair")          && <VRWordPair  q={q} selected={selected} onAnswer={handleAnswer} />}
-        {(q.type === "letter_sequence" || q.type === "number_sequence")    && <VRSequence  q={q} selected={selected} onAnswer={handleAnswer} />}
-        {q.type === "letters_numbers"                                      && <VRLettersNumbers     q={q} selected={selected} onAnswer={handleAnswer} />}
+        {(q.type === "letter_sequence" || q.type === "number_sequence")    && <VRSequence  q={q} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} />}
+        {q.type === "letters_numbers"                                      && <VRLettersNumbers     q={q} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} />}
         {q.type === "number_bracket"                                       && <VRNumberBracket      q={q} selected={selected} onAnswer={handleAnswer} />}
         {q.type === "equation_completion"                                  && <VREquationCompletion q={q} selected={selected} onAnswer={handleAnswer} />}
-        {q.type === "letter_code_analogy"                                  && <VRLetterCodeAnalogy  q={q} selected={selected} onAnswer={handleAnswer} />}
+        {q.type === "letter_code_analogy"                                  && <VRLetterCodeAnalogy  q={q} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} />}
         {selected === null && <div className="hint-row">Tap your answer</div>}
         {selected !== null && (
           <>
