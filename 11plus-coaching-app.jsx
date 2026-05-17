@@ -60,6 +60,42 @@ const GENERATED_VR_TYPES = ['letter_sequence', 'number_sequence', 'letters_numbe
                              'number_bracket', 'equation_completion', 'letter_code_analogy'];
 const ALL_VR_TYPES = [...LEITNER_VR_TYPES, ...GENERATED_VR_TYPES];
 
+// ─── BADGE SYSTEM (v1.14) ────────────────────────────────────────────────────
+const VR_TYPE_NAMES = {
+  analogy:             'Analogy',
+  odd_one_out:         'Categories',
+  antonym_pair:        'Antonyms',
+  synonym_pair:        'Synonyms',
+  letter_sequence:     'Letter Sequences',
+  number_sequence:     'Number Sequences',
+  letters_numbers:     'Mixed Sequences',
+  number_bracket_pair: 'Number Brackets',
+  equation_completion: 'Equations',
+  letter_code_analogy: 'Letter Codes',
+};
+// Badge id formats: 'vr_{type}_{band}', 'vocab_{band}', 'milestone_{key}'
+function getBadgeInfo(id) {
+  if (id.startsWith('milestone_')) {
+    const key = id.replace('milestone_', '');
+    return ({
+      vr_all_medium: { emoji:'⭐', name:'VR Rising Star',   desc:'All VR skills reached Level 2' },
+      vr_all_hard:   { emoji:'🌟', name:'VR Grand Master',  desc:'All VR skills mastered' },
+    })[key] || { emoji:'🏅', name:key, desc:'' };
+  }
+  if (id.startsWith('vocab_')) {
+    const band = id.replace('vocab_', '');
+    return band === 'hard'
+      ? { emoji:'🎓', name:'Vocabulary Master', desc:'Vocabulary reached Hard band' }
+      : { emoji:'📖', name:'Word Adventurer',   desc:'Vocabulary reached Medium band' };
+  }
+  // vr_{type}_{band} — band is always the last segment
+  const band = id.endsWith('_hard') ? 'hard' : 'medium';
+  const type = id.replace(/^vr_/, '').replace(/_hard$|_medium$/, '');
+  const typeName = VR_TYPE_NAMES[type] || type;
+  const tier = band === 'hard' ? '🏆 Master' : '🥈 Level 2';
+  return { emoji: band === 'hard' ? '🏆' : '🥈', name:`${typeName} ${tier.split(' ')[1]}`, desc:`${typeName} reached ${band} band` };
+}
+
 // Returns the next band above `band`, or null if already at the top.
 function nextBand(band) {
   const idx = BAND_ORDER.indexOf(band);
@@ -88,6 +124,15 @@ function migrateProgressionState(profile) {
       ...(GENERATED_VR_TYPES.includes(type) ? { recentSessionAccuracy: [] } : {}),
     };
   });
+  // v1.14: single vocab band tracker (shared across all vocab question types)
+  state.vocabBand = {
+    currentBand: startBand,
+    unlockedBand: null,
+    blendRate: 0.20,
+    recentSessionAccuracy: [],
+    recentNextBandAttempts: [],
+    poorWindowStreak: 0,
+  };
   return state;
 }
 
@@ -102,6 +147,7 @@ function getUserStorageKeys(userId) {
     streakData:     `11plus:user:${userId}:streak-data-v1`,
     vrLeitner:      `11plus:user:${userId}:vr-leitner-v1`,
     progression:    `11plus:user:${userId}:progression-v1`,
+    badges:         `11plus:user:${userId}:badges-v1`,
   };
 }
 
@@ -2656,6 +2702,7 @@ function buildVRQueue(vrLeitnerBoxes, maxDifficulty, progressionState) {
 function updateProgressionState(results, prevState, vrLeitnerBoxes) {
   const now = Date.now();
   const sessionId = `sess-${now}`;
+  const promotedTypes = [];   // types that graduate this session
   // Deep copy to avoid mutating state
   const updated = JSON.parse(JSON.stringify(prevState));
 
@@ -2689,10 +2736,20 @@ function updateProgressionState(results, prevState, vrLeitnerBoxes) {
         const accuracy = window.filter(a => a.correct).length / 20;
 
         if (accuracy >= 0.80) {
-          // Performing well: blend more
-          st.blendRate = Math.max(0.10, Math.min(0.60, st.blendRate + 0.05));
-          st.recentNextBandAttempts = attempts.slice(0, -20); // reset window
-          st.poorWindowStreak = 0;
+          if (st.blendRate >= 0.60) {
+            // PROMOTE: blend ceiling hit + another strong window → graduate to next band
+            st.currentBand            = st.unlockedBand;
+            st.unlockedBand           = null;
+            st.blendRate              = 0.20;
+            st.recentNextBandAttempts = [];
+            st.poorWindowStreak       = 0;
+            promotedTypes.push(type);
+          } else {
+            // Performing well: blend more
+            st.blendRate = Math.max(0.10, Math.min(0.60, st.blendRate + 0.05));
+            st.recentNextBandAttempts = attempts.slice(0, -20); // reset window
+            st.poorWindowStreak = 0;
+          }
         } else if (accuracy < 0.60) {
           st.poorWindowStreak = (st.poorWindowStreak || 0) + 1;
           if (st.poorWindowStreak >= 2) {
@@ -2730,6 +2787,94 @@ function updateProgressionState(results, prevState, vrLeitnerBoxes) {
     delete st._stepBackedThisUpdate;
   });
 
+  // ── PROMOTION & NEARING SIGNALS (read by handleSessionEnd) ───────────────
+  const nearingTypes = ALL_VR_TYPES.filter(type => {
+    const st = updated[type];
+    return st?.unlockedBand && st.blendRate >= 0.45 && !promotedTypes.includes(type);
+  });
+  updated._promotedTypes = promotedTypes;
+  updated._nearingTypes  = nearingTypes;
+
+  return updated;
+}
+
+// ─── VOCAB PROGRESSION UPDATER (v1.14) ───────────────────────────────────────
+// Called at end of a Vocab session. Mirrors VR progression logic but uses a single
+// vocabBand tracker (not per question-type). Mastery = ≥80% avg over last 3 sessions.
+// Next-band blending requires VocabSession to tag results with isNextBand (future work).
+function updateVocabProgressionState(results, prevState) {
+  if (!prevState?.vocabBand) return prevState;
+  const updated = JSON.parse(JSON.stringify(prevState));
+  const vst = updated.vocabBand;
+  const now = Date.now();
+  const sessionId = `sess-${now}`;
+
+  // 1. Record session accuracy
+  const correct = results.filter(r => r.correct).length;
+  const total   = results.length;
+  if (total > 0) {
+    vst.recentSessionAccuracy = [...(vst.recentSessionAccuracy || []).slice(-2), { sessionId, correct, total }];
+  }
+
+  // 2. Next-band attempt auto-tuning (kicks in once VocabSession tags isNextBand)
+  if (vst.unlockedBand) {
+    const nextBandResults = results.filter(r => r.isNextBand);
+    if (nextBandResults.length > 0) {
+      const newAttempts = nextBandResults.map(r => ({ correct: r.correct, ts: now }));
+      vst.recentNextBandAttempts = [...(vst.recentNextBandAttempts || []), ...newAttempts].slice(-40);
+    }
+    const attempts = vst.recentNextBandAttempts || [];
+    if (attempts.length >= 20) {
+      const win      = attempts.slice(-20);
+      const accuracy = win.filter(a => a.correct).length / 20;
+      if (accuracy >= 0.80) {
+        if (vst.blendRate >= 0.60) {
+          // PROMOTE
+          vst.currentBand            = vst.unlockedBand;
+          vst.unlockedBand           = null;
+          vst.blendRate              = 0.20;
+          vst.recentNextBandAttempts = [];
+          vst.poorWindowStreak       = 0;
+          updated._promotedVocab = true;
+        } else {
+          vst.blendRate = Math.min(0.60, vst.blendRate + 0.05);
+          vst.recentNextBandAttempts = attempts.slice(0, -20);
+          vst.poorWindowStreak = 0;
+        }
+      } else if (accuracy < 0.60) {
+        vst.poorWindowStreak = (vst.poorWindowStreak || 0) + 1;
+        if (vst.poorWindowStreak >= 2) {
+          vst.unlockedBand           = null;
+          vst.blendRate              = 0.20;
+          vst.recentNextBandAttempts = [];
+          vst.poorWindowStreak       = 0;
+        } else {
+          vst.blendRate = Math.max(0.10, vst.blendRate - 0.05);
+          vst.recentNextBandAttempts = attempts.slice(0, -20);
+        }
+      } else {
+        vst.recentNextBandAttempts = attempts.slice(0, -20);
+        vst.poorWindowStreak = 0;
+      }
+    }
+  }
+
+  // 3. Check mastery (session-accuracy based) & unlock next band
+  if (!vst.unlockedBand) {
+    const sessions = vst.recentSessionAccuracy || [];
+    if (sessions.length >= 3) {
+      const avgAcc = sessions.reduce((s, sess) => s + sess.correct / sess.total, 0) / sessions.length;
+      const nb = nextBand(vst.currentBand);
+      if (nb && avgAcc >= 0.80) {
+        vst.unlockedBand           = nb;
+        vst.blendRate              = 0.20;
+        vst.recentNextBandAttempts = [];
+        vst.poorWindowStreak       = 0;
+      }
+    }
+  }
+
+  updated._nearingVocab = !!(vst.unlockedBand && vst.blendRate >= 0.45 && !updated._promotedVocab);
   return updated;
 }
 
@@ -2987,6 +3132,22 @@ const css = `
   .q-reveal.simple { font-style:normal; color:var(--gold); font-weight:500; }
   .result-word { font-size:12px; color:inherit; opacity:0.8; margin-top:3px; font-style:italic; }
 
+  /* ── VOCAB DARK CARD LAYOUT ── */
+  .vocab-dark-card { background:var(--ink); color:white; }
+  .vc-prompt-row { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:20px; }
+  .vc-prompt-text { font-size:13px; color:rgba(255,255,255,0.6); flex:1; line-height:1.4; padding-top:5px; }
+  .vc-word { font-family:'Fraunces',serif; font-size:46px; font-weight:700; text-align:center; margin:0 0 16px; letter-spacing:-0.5px; line-height:1.1; }
+  .vc-clue { font-family:'Fraunces',serif; font-size:18px; font-weight:600; text-align:center; margin:0 0 16px; font-style:italic; line-height:1.6; color:rgba(255,255,255,0.9); }
+  .vocab-dark-card .q-aids { justify-content:center; margin-bottom:16px; }
+  .vocab-dark-card .q-reveal { text-align:center; }
+  .vocab-dark-card .hint-row { color:rgba(255,255,255,0.35); }
+  .vocab-dark-card .timer-bar-wrap { margin:-18px -18px 18px; border-radius:var(--radius) var(--radius) 0 0; }
+  .vocab-dark-card .next-btn { background:rgba(255,255,255,0.13); color:white; border:1px solid rgba(255,255,255,0.28); }
+  .vocab-dark-card .next-btn:hover { background:rgba(255,255,255,0.22); opacity:1; }
+  /* Reset color for light-background children inside the dark card */
+  .vocab-dark-card .opt-card { color:var(--ink); }
+  .vocab-dark-card .result-block { color:var(--ink); }
+
   /* OPTIONS */
   .options-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-bottom:12px; }
 
@@ -3095,6 +3256,30 @@ const css = `
   .sched-day { font-size:10px; font-weight:700; text-transform:uppercase; color:var(--ink-soft); width:48px; flex-shrink:0; padding-top:2px; }
   .sched-act { font-size:13px; font-weight:500; flex:1; }
   .sched-dur { font-size:11px; color:var(--ink-soft); flex-shrink:0; }
+
+  /* ── Celebration overlay (v1.14) ── */
+  .celeb-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:900; display:flex; align-items:center; justify-content:center; padding:20px; animation:fadeIn 0.25s ease; }
+  @keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
+  .celeb-box { background:var(--paper); border-radius:16px; padding:28px 24px 22px; max-width:380px; width:100%; position:relative; box-shadow:0 8px 32px rgba(0,0,0,0.22); text-align:center; animation:popIn 0.3s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes popIn { from { transform:scale(0.85); opacity:0 } to { transform:scale(1); opacity:1 } }
+  .celeb-confetti { font-size:42px; line-height:1; margin-bottom:10px; animation:wobble 0.6s ease; }
+  @keyframes wobble { 0%,100%{transform:rotate(0deg)} 25%{transform:rotate(-8deg)} 75%{transform:rotate(8deg)} }
+  .celeb-title { font-family:'Fraunces',serif; font-size:22px; font-weight:700; color:var(--ink); margin-bottom:6px; }
+  .celeb-sub { font-size:13px; color:var(--ink-soft); margin-bottom:18px; line-height:1.5; }
+  .celeb-pills { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-bottom:16px; }
+  .celeb-pill { display:flex; align-items:center; gap:6px; padding:6px 12px; border-radius:20px; font-size:12px; font-weight:600; }
+  .celeb-pill.promoted { background:var(--green); color:white; }
+  .celeb-pill.nearing  { background:var(--gold);  color:white; }
+  .celeb-badges { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-bottom:18px; }
+  .celeb-badge { display:flex; flex-direction:column; align-items:center; gap:4px; background:var(--cream); border-radius:10px; padding:10px 14px; min-width:80px; }
+  .celeb-badge-emoji { font-size:26px; line-height:1; }
+  .celeb-badge-name { font-size:10px; font-weight:700; color:var(--ink); text-align:center; line-height:1.3; }
+  .celeb-close { width:100%; padding:10px; border-radius:8px; border:none; background:var(--ink); color:white; font-size:14px; font-weight:700; cursor:pointer; transition:opacity 0.15s; }
+  .celeb-close:hover { opacity:0.85; }
+  /* ── Badge shelf ── */
+  .badge-shelf { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .badge-chip { display:inline-flex; align-items:center; gap:4px; background:var(--cream); border:1px solid var(--border); border-radius:20px; padding:3px 9px; font-size:11px; font-weight:600; cursor:default; }
+  .badge-chip-emoji { font-size:14px; }
 
   .streak-banner { background:linear-gradient(135deg,var(--gold),var(--accent)); color:white; padding:8px 12px; border-radius:var(--radius-sm); margin-bottom:12px; display:flex; align-items:center; gap:6px; font-size:13px; font-weight:600; }
 
@@ -3445,36 +3630,34 @@ function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficul
         <div className="stat-pill warn"><div className="val">{results.filter(r => !r.correct).length}</div><div className="lbl">Review</div></div>
         <div className={`stat-pill ${timedMode ? (elapsed < 20 ? "good" : elapsed < 28 ? "warn" : "slow") : (elapsed < 20 ? "good" : elapsed <= 30 ? "warn" : "slow")}`}><div className="val">{selected ? "✓" : timedMode ? `${Math.max(0, 30 - elapsed)}` : `${elapsed}s`}</div><div className="lbl">{timedMode && !selected ? "Left" : "Time"}</div></div>
       </div>
-      <div className="card">
+      <div className="card vocab-dark-card">
         {timedMode && !selected && (
           <div className="timer-bar-wrap">
             <div className="timer-bar-fill" style={{ width:`${Math.max(0,(30-elapsed)/30*100)}%`, background: elapsed >= 25 ? "var(--red)" : elapsed >= 18 ? "var(--gold)" : "var(--green)" }} />
           </div>
         )}
-        <div className="q-header">
-          <div className="q-header-top">
-            <div className="q-word">
-              {question.type === "definition" ? "Which word fits this definition?" :
-               question.type === "fillblank" ? "Fill in the blank" :
-               question.word}
-            </div>
-            <div className={`q-badge badge-${question.type}`}>
-              {question.type === "synonym" ? "Synonym" :
-               question.type === "antonym" ? "Antonym" :
-               question.type === "definition" ? "Definition" :
-               "Fill blank"}
-            </div>
+        <div className="vc-prompt-row">
+          <div className="vc-prompt-text">
+            {question.type === "synonym" && "Choose the word CLOSEST in meaning to:"}
+            {question.type === "antonym" && "Choose the word MOST OPPOSITE in meaning to:"}
+            {question.type === "definition" && "Which word matches this definition?"}
+            {question.type === "fillblank" && "Choose the word that completes the sentence:"}
           </div>
-          {(question.type === "synonym" || question.type === "antonym") && (
-            <QuestionAids word={question.word} aidLog={aidLog["__question"]} onAidUsed={(type) => handleAid("__question", type)} />
-          )}
-          <div className="q-prompt">
-            {question.type === "synonym" && `Which word means the same as "${question.word}"?`}
-            {question.type === "antonym" && `Which word is OPPOSITE in meaning to "${question.word}"?`}
-            {question.type === "definition" && <span className="q-clue">{question.clue}</span>}
-            {question.type === "fillblank" && <span className="q-clue">{question.clue}</span>}
+          <div className={`q-badge badge-${question.type}`}>
+            {question.type === "synonym" ? "Synonym" :
+             question.type === "antonym" ? "Antonym" :
+             question.type === "definition" ? "Definition" :
+             "Fill blank"}
           </div>
         </div>
+        {(question.type === "synonym" || question.type === "antonym") ? (
+          <>
+            <div className="vc-word">{question.word}</div>
+            <QuestionAids word={question.word} aidLog={aidLog["__question"]} onAidUsed={(type) => handleAid("__question", type)} />
+          </>
+        ) : (
+          <div className="vc-clue">{question.clue}</div>
+        )}
 
         <div className="options-grid">
           {question.options.map(opt => (
@@ -4794,6 +4977,76 @@ function AiKeyModal({ onSave, onDismiss }) {
 }
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
+// ─── CELEBRATION OVERLAY (v1.14) ─────────────────────────────────────────────
+function CelebrationOverlay({ celebration, onDismiss }) {
+  const { domain, promotedTypes = [], nearingTypes = [], promotedVocab, nearingVocab, newBadges = [] } = celebration;
+
+  const isPromotion = promotedTypes.length > 0 || promotedVocab;
+  const isNearing   = nearingTypes.length > 0   || nearingVocab;
+
+  const confetti = isPromotion ? '🎉' : '🔥';
+  const title    = isPromotion ? 'Level Up!' : 'Keep Going!';
+  const sub      = isPromotion
+    ? 'You\'ve graduated to the next difficulty band. Amazing work!'
+    : 'You\'re getting close to levelling up. A few more sessions!';
+
+  return (
+    <div className="celeb-backdrop" onClick={onDismiss}>
+      <div className="celeb-box" onClick={e => e.stopPropagation()}>
+        <div className="celeb-confetti">{confetti}</div>
+        <div className="celeb-title">{title}</div>
+        <div className="celeb-sub">{sub}</div>
+
+        {/* Promoted types */}
+        {(promotedTypes.length > 0 || promotedVocab) && (
+          <div className="celeb-pills">
+            {promotedTypes.map(type => (
+              <span key={type} className="celeb-pill promoted">
+                ✦ {VR_TYPE_NAMES[type] || type}
+              </span>
+            ))}
+            {promotedVocab && <span className="celeb-pill promoted">✦ Vocabulary</span>}
+          </div>
+        )}
+
+        {/* Nearing types */}
+        {(nearingTypes.length > 0 || nearingVocab) && (
+          <div className="celeb-pills">
+            {nearingTypes.map(type => (
+              <span key={type} className="celeb-pill nearing">
+                ◎ {VR_TYPE_NAMES[type] || type} — almost there!
+              </span>
+            ))}
+            {nearingVocab && <span className="celeb-pill nearing">◎ Vocabulary — almost there!</span>}
+          </div>
+        )}
+
+        {/* New badges earned */}
+        {newBadges.length > 0 && (
+          <>
+            <div style={{ fontSize:12, fontWeight:700, color:'var(--ink-soft)', marginBottom:8, textTransform:'uppercase', letterSpacing:1 }}>
+              New badge{newBadges.length > 1 ? 's' : ''} earned
+            </div>
+            <div className="celeb-badges">
+              {newBadges.map(b => {
+                const info = getBadgeInfo(b.id);
+                return (
+                  <div key={b.id} className="celeb-badge">
+                    <span className="celeb-badge-emoji">{info.emoji}</span>
+                    <span className="celeb-badge-name">{info.name}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        <button className="celeb-close" onClick={onDismiss}>Continue →</button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [mode, setMode] = useState("student");
   const [tab, setTab] = useState("practice");
@@ -4818,6 +5071,10 @@ export default function App() {
 
   // v1.12 progression state (per active profile, stored in its own key)
   const [progressionState, setProgressionState] = useState(null);
+
+  // v1.14 badges + post-session celebration
+  const [badges, setBadges] = useState([]);
+  const [pendingCelebration, setPendingCelebration] = useState(null);
 
   // v1.13 Phase 0: AI toggle — show key modal if no key configured and not in Cowork
   const handleAiToggle = () => {
@@ -4846,6 +5103,8 @@ export default function App() {
     setSessionHistory(history);
     setStreak(streakData);
     setProgressionState(prog);
+    const badgeData = await storageGet(keys.badges) || [];
+    setBadges(badgeData);
   };
 
   useEffect(() => {
@@ -4913,6 +5172,33 @@ export default function App() {
       });
       setLeitnerBoxes(newBoxes);
       await storageSet(userKeys.leitnerBoxes, newBoxes);
+
+      // v1.14: update vocab progression, award badges, trigger celebration
+      if (progressionState) {
+        const newProg = updateVocabProgressionState(results, progressionState);
+        setProgressionState(newProg);
+        await storageSet(userKeys.progression, newProg);
+
+        const promotedVocab = newProg._promotedVocab || false;
+        const nearingVocab  = newProg._nearingVocab  || false;
+
+        if (promotedVocab || nearingVocab) {
+          const newBadgeIds = [];
+          if (promotedVocab) {
+            const band = newProg.vocabBand.currentBand;
+            const id   = `vocab_${band}`;
+            if (!badges.find(b => b.id === id)) newBadgeIds.push(id);
+          }
+          const now2 = Date.now();
+          const newBadgeObjs = newBadgeIds.map(id => ({ id, earnedAt: now2 }));
+          if (newBadgeObjs.length > 0) {
+            const updatedBadges = [...badges, ...newBadgeObjs];
+            setBadges(updatedBadges);
+            await storageSet(userKeys.badges, updatedBadges);
+          }
+          setPendingCelebration({ domain:'vocab', promotedVocab, nearingVocab, newBadges: newBadgeObjs });
+        }
+      }
     } else if (domain === "vr") {
       const newVrBoxes = { ...vrLeitnerBoxes };
       results.forEach(r => {
@@ -4926,11 +5212,42 @@ export default function App() {
       setVrLeitnerBoxes(newVrBoxes);
       await storageSet(userKeys.vrLeitner, newVrBoxes);
 
-      // v1.12: update progression state (mastery checks, auto-tuning, step-back)
+      // v1.14: update progression, award badges, trigger celebration
       if (progressionState) {
         const newProg = updateProgressionState(results, progressionState, newVrBoxes);
         setProgressionState(newProg);
         await storageSet(userKeys.progression, newProg);
+
+        const promotedTypes = newProg._promotedTypes || [];
+        const nearingTypes  = newProg._nearingTypes  || [];
+
+        if (promotedTypes.length > 0 || nearingTypes.length > 0) {
+          const newBadgeIds = [];
+          promotedTypes.forEach(type => {
+            const band = newProg[type]?.currentBand;
+            if (band) {
+              const id = `vr_${type}_${band}`;
+              if (!badges.find(b => b.id === id)) newBadgeIds.push(id);
+            }
+          });
+          // Milestone: all VR types at medium or hard
+          const allAtMedium = ALL_VR_TYPES.every(t => {
+            const st = newProg[t];
+            return st && BAND_ORDER.indexOf(st.currentBand) >= BAND_ORDER.indexOf('medium');
+          });
+          const allAtHard = ALL_VR_TYPES.every(t => newProg[t]?.currentBand === 'hard');
+          if (allAtMedium && !badges.find(b => b.id === 'milestone_vr_all_medium')) newBadgeIds.push('milestone_vr_all_medium');
+          if (allAtHard   && !badges.find(b => b.id === 'milestone_vr_all_hard'))   newBadgeIds.push('milestone_vr_all_hard');
+
+          const now2 = Date.now();
+          const newBadgeObjs = newBadgeIds.map(id => ({ id, earnedAt: now2 }));
+          if (newBadgeObjs.length > 0) {
+            const updatedBadges = [...badges, ...newBadgeObjs];
+            setBadges(updatedBadges);
+            await storageSet(userKeys.badges, updatedBadges);
+          }
+          setPendingCelebration({ domain:'vr', promotedTypes, nearingTypes, newBadges: newBadgeObjs });
+        }
       }
     }
 
@@ -4987,8 +5304,10 @@ export default function App() {
       setSessionHistory([]);
       setStreak({ count: 0, lastDate: null });
       setProgressionState(freshProg);
+      setBadges([]);
       setPractising(false);
     }
+    await storageSet(userKeys.badges, []);
   };
 
   // v1.12: parent/coach can manually override blendRate for any VR type
@@ -5120,6 +5439,22 @@ export default function App() {
           ) : (
             <>
               {streak.count >= 2 && <div className="streak-banner">🔥 {streak.count}-day streak — keep it up!</div>}
+              {badges.length > 0 && (
+                <div className="card" style={{ padding:'10px 14px' }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:'var(--ink-soft)', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Your badges</div>
+                  <div className="badge-shelf">
+                    {badges.map(b => {
+                      const info = getBadgeInfo(b.id);
+                      return (
+                        <span key={b.id} className="badge-chip" title={info.desc}>
+                          <span className="badge-chip-emoji">{info.emoji}</span>
+                          {info.name}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="card">
                 <div className="card-title">Ready to practise?</div>
                 <div className="card-sub">Your session is picked automatically — vocab and VR alternate each time</div>
@@ -5187,6 +5522,12 @@ export default function App() {
           <QuestionPreview maxDifficulty={maxDifficulty} />
         ) : null}
       </div>
+      {pendingCelebration && (
+        <CelebrationOverlay
+          celebration={pendingCelebration}
+          onDismiss={() => setPendingCelebration(null)}
+        />
+      )}
     </div>
   );
 }

@@ -35,8 +35,21 @@ appJs = appJs.replace(
   (_, names) => `const {${names}} = React;`
 );
 
+// Strip `export default` — the App component is mounted via ReactDOM.createRoot below.
+// The export keyword is invalid in a classic <script> tag and causes a SyntaxError
+// that silently prevents the entire app from loading in standalone HTML mode.
+// (In Cowork/Claude.ai artifact mode the framework handles the export automatically.)
+appJs = appJs.replace(/\bexport\s+default\s+function\s+App\b/, 'function App');
+appJs = appJs.replace(/\bexport\s+default\s+App\b/, '/* export removed */');
+
+// Append the React root mount — runs once the script is parsed.
+appJs += '\nReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App,null));';
+
 if (appJs.includes('import{') || appJs.includes('import {')) {
   console.warn("⚠ Residual import statements found — check app-min.js");
+}
+if (appJs.includes('export default')) {
+  console.warn("⚠ Residual export default found — check app-min.js");
 }
 
 // Extract VERSION from app for the backup filename
@@ -101,6 +114,6 @@ console.log("");
 console.log("Verification:");
 console.log(`  Script tags:    ${(html.match(/<script/g) || []).length} (expected 5)`);
 console.log(`  import{{:        ${(html.match(/import\{/g) || []).length} (expected 0)`);
-console.log(`  createRoot:     ${(html.match(/createRoot/g) || []).length} (expected 1)`);
+console.log(`  createRoot:     ${(html.match(/createRoot/g) || []).length} (expected 2: 1 in ReactDOM lib + 1 mount call)`);
 console.log("");
 console.log("Next: update the Cowork artifact with the new 11plus-coach.html");
