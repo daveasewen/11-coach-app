@@ -1883,7 +1883,84 @@ const DISTRACTOR_DICT = {
   "harshness": { definition: "The quality of being severe, rough, or unkind", simpleDefinition: "Being rough and unkind — without any gentleness" },
   "friend": { definition: "A person you know well and like; a companion", simpleDefinition: "Someone you like and trust who is on your side" },
   "compliment": { definition: "A polite expression of praise or admiration", simpleDefinition: "Saying something nice to someone to make them feel good" },
-  "improve": { definition: "To make or become better than before", simpleDefinition: "To get better at something or make something better" }
+  "improve": { definition: "To make or become better than before", simpleDefinition: "To get better at something or make something better" },
+  "devoted": { definition: "Deeply dedicated and loyal to a person, cause, or activity", simpleDefinition: "Totally committed and loyal — giving everything to something or someone" },
+  "trustworthy": { definition: "Reliable, honest, and deserving of trust and confidence", simpleDefinition: "Someone you can always rely on to be honest and keep their word" },
+  "lucky": { definition: "Having, bringing, or resulting from good fortune", simpleDefinition: "Things going your way by chance — getting fortune on your side" },
+  "wavering": { definition: "Being uncertain or unsteady; hesitating between choices", simpleDefinition: "Going back and forth — not sure which way to go or what to decide" },
+  "resentful": { definition: "Feeling bitterness or anger at having been treated unfairly", simpleDefinition: "Feeling angry inside because you think something was unfair" },
+  "opponent": { definition: "A person who competes against or argues against another", simpleDefinition: "The person on the other side — the one you're competing or arguing against" },
+  "quick": { definition: "Moving or happening at high speed; done in a short time", simpleDefinition: "Fast — done before you know it" },
+  "awkward": { definition: "Causing difficulty or embarrassment; clumsy in movement or manner", simpleDefinition: "Uncomfortable and clumsy — like you don't quite fit in" },
+  "dismiss": { definition: "To send away or decide that something is not worth considering", simpleDefinition: "To wave something away — treating it as not worth your attention" },
+  "timidity": { definition: "The quality of being shy, hesitant, and lacking in confidence", simpleDefinition: "Being too nervous and shy to speak up or take action" },
+  "bravery": { definition: "The quality of being courageous; willingness to face danger or difficulty", simpleDefinition: "Being bold enough to face scary or difficult things without running away" },
+  "disobedient": { definition: "Refusing to obey rules or those in authority", simpleDefinition: "Not doing what you're told — going against the rules on purpose" },
+  "rebellious": { definition: "Resisting authority or control; unwilling to follow rules", simpleDefinition: "Pushing back against rules and authority — refusing to just go along with things" },
+  "fear": { definition: "An unpleasant emotion caused by the belief that something is dangerous or threatening", simpleDefinition: "That scared feeling when you think something bad might happen" },
+  "confidence": { definition: "A feeling of self-assurance arising from one's own abilities or qualities", simpleDefinition: "Believing in yourself — feeling sure you can handle things" },
+  "strange": { definition: "Unusual or surprising in a way that is hard to understand", simpleDefinition: "Odd and unexpected — not what you'd normally see or expect" },
+  "violent": { definition: "Using or involving physical force intended to hurt or kill", simpleDefinition: "Using force to hurt — aggressive and dangerous" },
+  "tough": { definition: "Strong enough to withstand difficult conditions; not easily damaged", simpleDefinition: "Hard and strong — able to handle pressure without breaking" },
+  "unlucky": { definition: "Having or bringing bad fortune; not favoured by luck", simpleDefinition: "When things just go wrong — bad fortune following you around" },
+  "blessed": { definition: "Made holy; bringing happiness, good fortune, or divine favour", simpleDefinition: "Gifted with something good — feeling very fortunate" },
+  "rough": { definition: "Having an uneven surface; not gentle; approximate rather than exact", simpleDefinition: "Bumpy, harsh or uneven — not smooth or gentle" },
+  "reassure": { definition: "To say or do something to remove someone's doubts or fears", simpleDefinition: "To calm someone down and help them feel safe and confident again" },
+  "regret": { definition: "A feeling of sadness, repentance, or disappointment over something done or not done", simpleDefinition: "Wishing you could undo something — feeling bad about a past choice" },
+  "appreciative": { definition: "Feeling or showing gratitude and recognition for something", simpleDefinition: "Really thankful and grateful — knowing how good something is" },
+  "disloyal": { definition: "Not faithful to one's allegiances, duties, or commitments; betraying trust", simpleDefinition: "Going behind someone's back — not keeping your loyalty to them" },
+  "unyielding": { definition: "Not giving way to pressure or demands; remaining firm and determined", simpleDefinition: "Absolutely refusing to budge — standing firm no matter what" },
+  "overlook": { definition: "To fail to notice, consider, or deal with something", simpleDefinition: "Missing something important — not noticing when you should have" },
+  "deter": { definition: "To discourage someone from doing something through doubt, fear, or difficulty", simpleDefinition: "To put someone off doing something by making it seem risky or hard" },
+  "disgrace": { definition: "Loss of reputation or respect as a result of a dishonourable action", simpleDefinition: "Bringing shame on yourself or others by doing something wrong" },
+  "conceal": { definition: "To keep something hidden or secret; to prevent it from being discovered", simpleDefinition: "To hide something so no one can find or see it" },
+  "guilty": { definition: "Having done something wrong; responsible for a fault or error", simpleDefinition: "Knowing you did something wrong — deserving the blame" },
+  "blameless": { definition: "Innocent of wrongdoing; not responsible for any fault or error", simpleDefinition: "Totally in the clear — you haven't done anything wrong" },
+  "sneaky": { definition: "Acting in a secretive, deceptive, or sly manner to avoid detection", simpleDefinition: "Sly and underhand — doing things in secret to trick people" },
+  "sound": { definition: "In good condition; based on solid reasoning; reliable and sensible", simpleDefinition: "Solid and reliable — you can trust it completely" },
+  "prosperity": { definition: "The state of being successful and having a good life, especially financially", simpleDefinition: "Doing really well — having money, health, and happiness" },
+  "treachery": { definition: "Betrayal of trust; acting secretly against those who relied on you", simpleDefinition: "Going behind someone's back in the worst way — total betrayal" },
+  "placate": { definition: "To make someone less angry or upset; to calm someone down by conceding", simpleDefinition: "To calm someone down when they're angry — smoothing things over" },
+  "agitate": { definition: "To make someone feel anxious or unsettled; to stir up trouble or unrest", simpleDefinition: "To stir things up and make people feel anxious or unsettled" },
+  "declare": { definition: "To announce or state something clearly and officially", simpleDefinition: "To say something loudly and clearly so everyone knows" },
+  "deny": { definition: "To state that something is not true; to refuse to admit or accept", simpleDefinition: "To say no — refusing to admit something happened or is true" },
+  "reverence": { definition: "Deep respect and admiration felt or shown towards someone or something", simpleDefinition: "Really deep respect — treating someone or something as almost sacred" },
+  "accept": { definition: "To receive or take something offered; to agree or consent to something", simpleDefinition: "To take something in — being willing to receive or agree to it" },
+  "defend": { definition: "To protect from harm or attack; to argue in support of someone or something", simpleDefinition: "To stand up for and protect — keeping someone safe from attack" },
+  "protect": { definition: "To keep safe from harm, injury, or damage", simpleDefinition: "To keep something safe — standing between it and danger" },
+  "unfeeling": { definition: "Lacking sympathy or kindness towards others; cold and emotionless", simpleDefinition: "Cold and uncaring — showing no warmth or sympathy for others" },
+  "heartless": { definition: "Showing no feeling or compassion for others; completely cruel", simpleDefinition: "Totally without kindness — not caring even a little bit about others" },
+  "merciless": { definition: "Showing no mercy; cruel and harsh without any compassion", simpleDefinition: "Not letting anyone off — harsh and unforgiving no matter what" },
+  "sensitive": { definition: "Quick to show or feel emotions; aware of and responsive to others' feelings", simpleDefinition: "Easily affected by feelings — very aware of your own and others' emotions" },
+  "enchant": { definition: "To fill someone with great delight; to attract and charm powerfully", simpleDefinition: "To completely delight someone — like casting a magical spell on them" },
+  "charm": { definition: "The power to attract and delight others; to use this power on someone", simpleDefinition: "A special appeal that makes people like and admire you instantly" },
+  "pressure": { definition: "Force or persuasion applied to make someone act in a particular way", simpleDefinition: "Being pushed to do something — feeling forced or squeezed into a decision" },
+  "callousness": { definition: "The quality of being cruel, insensitive, and uncaring towards others", simpleDefinition: "A cold, hard attitude — not caring at all about other people's pain" },
+  "upright": { definition: "Honest, moral, and behaving according to good principles", simpleDefinition: "Straight and honest — always doing the right thing" },
+  "afraid": { definition: "Feeling fear or anxiety; worried that something bad will happen", simpleDefinition: "Scared — worried that something bad or dangerous is coming" },
+  "forsaken": { definition: "Abandoned and deserted; left behind without help or support", simpleDefinition: "Left all alone with no one to help — completely abandoned" },
+  "stately": { definition: "Impressive in size or appearance; dignified and grand in manner", simpleDefinition: "Grand and impressive — carrying yourself with real dignity" },
+  "shameful": { definition: "Bringing shame or disgrace; worthy of strong disapproval", simpleDefinition: "Really embarrassing and wrong — something you should be ashamed of" },
+  "disgraceful": { definition: "Shockingly unacceptable behaviour that brings shame or dishonour", simpleDefinition: "Absolutely unacceptable — something that brings real shame" },
+  "commanding": { definition: "Possessing or giving an air of authority; impressive and dominant", simpleDefinition: "Naturally in charge — having a presence that makes people follow you" },
+  "terror": { definition: "Extreme fear; a person or thing that causes intense fear", simpleDefinition: "Absolute panic — the worst kind of fear that takes over completely" },
+  "apprehension": { definition: "Anxiety or dread about a future event; the act of dreading something", simpleDefinition: "A worried, uneasy feeling about something that hasn't happened yet" },
+  "odd": { definition: "Strange or unusual; different from what is normal or expected", simpleDefinition: "A bit strange — not what you'd normally expect to see" },
+  "quirky": { definition: "Unusual in an interesting, charming, or eccentric way", simpleDefinition: "Charmingly weird — unusual in a way that makes you smile" },
+  "normal": { definition: "Conforming to a standard; usual, typical, or expected", simpleDefinition: "The usual thing — nothing out of the ordinary" },
+  "comforting": { definition: "Making someone feel less upset, worried, or distressed", simpleDefinition: "Helping you feel better when you're sad or scared" },
+  "expressive": { definition: "Effectively conveying thought or feeling; showing emotions openly", simpleDefinition: "Full of feeling — really showing what you think and feel" },
+  "effort": { definition: "A determined attempt to do something; the use of physical or mental energy", simpleDefinition: "Really trying hard — putting your energy into getting something done" },
+  "neglect": { definition: "To fail to care for properly or give necessary attention to", simpleDefinition: "Ignoring something that needs your care — letting it suffer through inattention" },
+  "recklessness": { definition: "The quality of acting without thinking about the consequences", simpleDefinition: "Doing things without thinking — charging ahead without caring about the risks" },
+  "fragile": { definition: "Easily broken or damaged; delicate and not strong", simpleDefinition: "Easily hurt or broken — needs to be handled with great care" },
+  "ungracious": { definition: "Rude and impolite; not showing gratitude or courtesy", simpleDefinition: "Rude and ungrateful — not behaving politely or thankfully" },
+  "discourteous": { definition: "Showing bad manners; rude and lacking in respect for others", simpleDefinition: "Impolite and rude — not treating people with the respect they deserve" },
+  "heartache": { definition: "Emotional suffering or grief; intense sadness or distress", simpleDefinition: "A deep, painful sadness — the kind that feels like your heart is hurting" },
+  "horrifying": { definition: "Extremely shocking, disturbing, or frightening", simpleDefinition: "So terrible it makes you feel sick with shock and fear" },
+  "macabre": { definition: "Disturbing and horrifying because connected with death or injury", simpleDefinition: "Dark and creepy — dealing with death in a way that makes you shudder" },
+  "beneficial": { definition: "Having a good or helpful effect; producing positive results", simpleDefinition: "Good for you — helping things improve or go well" },
+  "abandoned": { definition: "Left behind and no longer cared for; deserted", simpleDefinition: "Left all alone — given up on and left without any care" }
 };
 
 // Looks up a word in WORD_MAP first, falls back to DISTRACTOR_DICT
@@ -3445,12 +3522,12 @@ function OptionCard({ opt, selected, correct, answered, onAnswer, onAidUsed, aid
         <span className="opt-word">{opt}</span>
         <div className="opt-aids">
           <button className={`aid-btn${aidLog.speak ? " used" : ""}`} onClick={handleSpeak} title="Hear pronunciation">🔊 Pronounce</button>
-          <button className={`aid-btn${aidLog.def ? " used" : ""}`} onClick={handleDef} title="Definition">📖 Definition</button>
-          <button className={`aid-btn${aidLog.simple ? " used" : ""}`} onClick={handleSimple} title="See definition first" disabled={!showDef} style={!showDef ? {opacity:0.35,cursor:"not-allowed"} : {}}>💡 Simple</button>
+          {data && <button className={`aid-btn${aidLog.def ? " used" : ""}`} onClick={handleDef} title="Definition">📖 Definition</button>}
+          {data?.simpleDefinition && <button className={`aid-btn${aidLog.simple ? " used" : ""}`} onClick={handleSimple} title="Simple explanation" disabled={!showDef} style={!showDef ? {opacity:0.35,cursor:"not-allowed"} : {}}>💡 Simple</button>}
         </div>
       </div>
-      {showDef && <div className="opt-reveal">{data ? data.definition : "Definition not available for this word."}</div>}
-      {showSimple && <div className="opt-reveal simple">💡 {data ? data.simpleDefinition : "Simple explanation not available."}</div>}
+      {showDef && data && <div className="opt-reveal">{data.definition}</div>}
+      {showSimple && data?.simpleDefinition && <div className="opt-reveal simple">💡 {data.simpleDefinition}</div>}
     </div>
   );
 }
