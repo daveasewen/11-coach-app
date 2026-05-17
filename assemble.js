@@ -59,28 +59,9 @@ window.storage = {
 };
 `;
 
-// Banner + polling Cowork detection (never shows in Cowork; shows in standalone after 2s)
-const bannerJs = `
-// Show API key banner only in standalone mode (no Cowork environment)
-function showBannerIfNeeded() {
-  if (localStorage.getItem('11plus:api-key')) return;
-  var attempts = 0, maxAttempts = 20;
-  function check() {
-    if (window.cowork && typeof window.cowork.askClaude === 'function') return;
-    if (++attempts < maxAttempts) { setTimeout(check, 100); return; }
-    document.getElementById('api-key-banner').style.display = 'flex';
-  }
-  setTimeout(check, 100);
-}
-function saveApiKey() {
-  var key = document.getElementById('api-key-input').value.trim();
-  if (key) { localStorage.setItem('11plus:api-key', key); dismissBanner(); }
-}
-function dismissBanner() {
-  document.getElementById('api-key-banner').style.display = 'none';
-}
-window.addEventListener('load', showBannerIfNeeded);
-`;
+// v1.13: API key banner removed — key entry is now handled by AiKeyModal inside the React app.
+// The banner was shown on load whenever no key was present, which conflicts with "AI off by default".
+// Users enable AI via the AI pill → modal flow instead.
 
 const html = `<!DOCTYPE html>
 <html lang="en">
@@ -95,17 +76,9 @@ const html = `<!DOCTYPE html>
 </head>
 <body style="margin:0;padding:0;background:#faf8f3">
 
-<div id="api-key-banner" style="display:none;background:#1a1a2e;color:#fff;padding:10px 18px;font-family:sans-serif;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-  <span>🔑 Enter your Anthropic API key to enable AI coaching:</span>
-  <input id="api-key-input" type="password" placeholder="sk-ant-..." style="flex:1;min-width:200px;padding:6px 10px;border-radius:6px;border:none;font-size:13px">
-  <button onclick="saveApiKey()" style="background:#e85d26;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600">Save</button>
-  <button onclick="dismissBanner()" style="background:transparent;color:rgba(255,255,255,0.5);border:none;cursor:pointer">✕</button>
-</div>
-
 <div id="root"></div>
 
 <script>${storagePolyfill}</script>
-<script>${bannerJs}</script>
 <script>${reactJs}</script>
 <script>${reactdomJs}</script>
 <script>${appJs}</script>
@@ -126,7 +99,7 @@ console.log(`✓ 11plus-coach.html written — ${kb} KB (v${version})`);
 console.log(`✓ Backup: 11plus-coach-${version}.html`);
 console.log("");
 console.log("Verification:");
-console.log(`  Script tags:    ${(html.match(/<script/g) || []).length} (expected 6)`);
+console.log(`  Script tags:    ${(html.match(/<script/g) || []).length} (expected 5)`);
 console.log(`  import{{:        ${(html.match(/import\{/g) || []).length} (expected 0)`);
 console.log(`  createRoot:     ${(html.match(/createRoot/g) || []).length} (expected 1)`);
 console.log("");

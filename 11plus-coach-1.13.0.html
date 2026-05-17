@@ -11,13 +11,6 @@
 </head>
 <body style="margin:0;padding:0;background:#faf8f3">
 
-<div id="api-key-banner" style="display:none;background:#1a1a2e;color:#fff;padding:10px 18px;font-family:sans-serif;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-  <span>🔑 Enter your Anthropic API key to enable AI coaching:</span>
-  <input id="api-key-input" type="password" placeholder="sk-ant-..." style="flex:1;min-width:200px;padding:6px 10px;border-radius:6px;border:none;font-size:13px">
-  <button onclick="saveApiKey()" style="background:#e85d26;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600">Save</button>
-  <button onclick="dismissBanner()" style="background:transparent;color:rgba(255,255,255,0.5);border:none;cursor:pointer">✕</button>
-</div>
-
 <div id="root"></div>
 
 <script>
@@ -29,27 +22,6 @@ window.storage = {
     try { localStorage.setItem(key, value); } catch(e) {}
   }
 };
-</script>
-<script>
-// Show API key banner only in standalone mode (no Cowork environment)
-function showBannerIfNeeded() {
-  if (localStorage.getItem('11plus:api-key')) return;
-  var attempts = 0, maxAttempts = 20;
-  function check() {
-    if (window.cowork && typeof window.cowork.askClaude === 'function') return;
-    if (++attempts < maxAttempts) { setTimeout(check, 100); return; }
-    document.getElementById('api-key-banner').style.display = 'flex';
-  }
-  setTimeout(check, 100);
-}
-function saveApiKey() {
-  var key = document.getElementById('api-key-input').value.trim();
-  if (key) { localStorage.setItem('11plus:api-key', key); dismissBanner(); }
-}
-function dismissBanner() {
-  document.getElementById('api-key-banner').style.display = 'none';
-}
-window.addEventListener('load', showBannerIfNeeded);
 </script>
 <script>/**
  * @license React
