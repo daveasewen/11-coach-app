@@ -55,7 +55,7 @@ const BAND_ORDER     = ['easy', 'medium', 'hard'];
 const BAND_DIFFICULTY = { easy: 2, medium: 3, hard: 5 };  // maps band → maxDifficulty
 
 // VR types split by tracking method (Leitner vs generated-each-session)
-const LEITNER_VR_TYPES   = ['analogy', 'odd_one_out', 'antonym_pair', 'synonym_pair'];
+const LEITNER_VR_TYPES   = ['analogy', 'odd_one_out'];  // antonym_pair/synonym_pair moved to vocab (v1.14)
 const GENERATED_VR_TYPES = ['letter_sequence', 'number_sequence', 'letters_numbers',
                              'number_bracket', 'equation_completion', 'letter_code_analogy'];
 const ALL_VR_TYPES = [...LEITNER_VR_TYPES, ...GENERATED_VR_TYPES];
@@ -64,12 +64,10 @@ const ALL_VR_TYPES = [...LEITNER_VR_TYPES, ...GENERATED_VR_TYPES];
 const VR_TYPE_NAMES = {
   analogy:             'Analogy',
   odd_one_out:         'Categories',
-  antonym_pair:        'Antonyms',
-  synonym_pair:        'Synonyms',
   letter_sequence:     'Letter Sequences',
   number_sequence:     'Number Sequences',
   letters_numbers:     'Mixed Sequences',
-  number_bracket_pair: 'Number Brackets',
+  number_bracket:      'Number Brackets',
   equation_completion: 'Equations',
   letter_code_analogy: 'Letter Codes',
 };
@@ -2005,29 +2003,12 @@ function getDueVRQuestions(vrLeitnerBoxes, maxDifficulty = 5) {
     if (q.difficulty > maxDifficulty) return;
     if (isDue(q.id)) due.push(q);
   });
-  ANTONYM_BANK.forEach(q => {
-    if (q.difficulty > maxDifficulty) return;
-    if (isDue(q.id)) due.push(q);
-  });
-  SYNONYM_BANK.forEach(q => {
-    if (q.difficulty > maxDifficulty) return;
-    if (isDue(q.id)) due.push(q);
-  });
+  // antonym_pair / synonym_pair are now vocab-domain — not served in VR sessions (v1.14)
 
   // Shuffle and pre-compute options so they don't re-shuffle on re-render
   return shuffle(due).map(q => {
     if (q.type === "analogy") return { ...q, options: shuffle([q.correct, ...q.distractors]) };
     if (q.type === "odd_one_out") return { ...q, displayWords: shuffle([...q.words]) };
-    if (q.type === "antonym_pair") {
-      const correct = q.antonyms[Math.floor(Math.random() * q.antonyms.length)];
-      const distractors = shuffle(q.synonymPool.filter(d => d !== correct)).slice(0, 3);
-      return { ...q, correct, options: shuffle([correct, ...distractors]) };
-    }
-    if (q.type === "synonym_pair") {
-      const correct = q.synonyms[Math.floor(Math.random() * q.synonyms.length)];
-      const distractors = shuffle(q.antonymPool.filter(d => d !== correct)).slice(0, 3);
-      return { ...q, correct, options: shuffle([correct, ...distractors]) };
-    }
     return q;
   });
 }
@@ -2579,7 +2560,7 @@ function checkMastery(type, progressionState, vrLeitnerBoxes) {
   const maxDiff = BAND_DIFFICULTY[typeState.currentBand];
 
   if (LEITNER_VR_TYPES.includes(type)) {
-    const allOfType = [...VR_BANK, ...ANTONYM_BANK, ...SYNONYM_BANK]
+    const allOfType = [...VR_BANK]  // antonym_pair/synonym_pair are vocab-domain (v1.14)
       .filter(q => q.type === type && q.difficulty <= maxDiff);
     if (allOfType.length === 0) return false;
     const inHighBoxes = allOfType.filter(q => (vrLeitnerBoxes[q.id]?.box ?? 0) >= 4).length;
@@ -2620,7 +2601,7 @@ function getDueVRQuestionsForBand(vrLeitnerBoxes, progressionState) {
     return (now - entry.lastSeen) / 86400000 >= intervals[Math.min(entry.box, 5)];
   };
 
-  const allTracked = [...VR_BANK, ...ANTONYM_BANK, ...SYNONYM_BANK];
+  const allTracked = [...VR_BANK];  // antonym_pair/synonym_pair are vocab-domain (v1.14)
   const result = [];
 
   LEITNER_VR_TYPES.forEach(type => {
@@ -2649,20 +2630,10 @@ function getDueVRQuestionsForBand(vrLeitnerBoxes, progressionState) {
     }
   });
 
-  // Pre-compute options (same logic as getDueVRQuestions)
+  // Pre-compute options (analogy and odd_one_out only — word pairs now vocab-domain)
   return shuffle(result).map(q => {
     if (q.type === "analogy") return { ...q, options: shuffle([q.correct, ...q.distractors]) };
     if (q.type === "odd_one_out") return { ...q, displayWords: shuffle([...q.words]) };
-    if (q.type === "antonym_pair") {
-      const correct = q.antonyms[Math.floor(Math.random() * q.antonyms.length)];
-      const distractors = shuffle(q.synonymPool.filter(d => d !== correct)).slice(0, 3);
-      return { ...q, correct, options: shuffle([correct, ...distractors]) };
-    }
-    if (q.type === "synonym_pair") {
-      const correct = q.synonyms[Math.floor(Math.random() * q.synonyms.length)];
-      const distractors = shuffle(q.antonymPool.filter(d => d !== correct)).slice(0, 3);
-      return { ...q, correct, options: shuffle([correct, ...distractors]) };
-    }
     return q;
   });
 }
@@ -4174,8 +4145,6 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
 const VR_TYPE_LABELS = {
   analogy:            'Analogy',
   odd_one_out:        'Odd One Out',
-  antonym_pair:       'Antonym Pair',
-  synonym_pair:       'Synonym Pair',
   letter_sequence:    'Letter Seq.',
   number_sequence:    'Number Seq.',
   letters_numbers:    'Letters=Nums',
@@ -4791,27 +4760,27 @@ function ProfileSelector({ profiles, activeProfileId, leitnerBoxes, onSelect, on
 
 // ─── QUESTION PREVIEW (tutor tab) ─────────────────────────────────────────────
 const VR_PREVIEW_TYPES = [
-  { id:"antonym_pair",        label:"Antonym pair"         },
-  { id:"synonym_pair",        label:"Synonym pair"         },
+  { id:"analogy",             label:"Analogy"              },
+  { id:"odd_one_out",         label:"Odd one out"          },
   { id:"letter_sequence",     label:"Letter sequence"      },
   { id:"number_sequence",     label:"Number sequence"      },
   { id:"letters_numbers",     label:"Letters = Numbers"    },
   { id:"number_bracket",      label:"Number bracket"       },
   { id:"equation_completion", label:"Equation completion"  },
   { id:"letter_code_analogy", label:"Letter code analogy"  },
-  { id:"analogy",             label:"Analogy"              },
-  { id:"odd_one_out",         label:"Odd one out"          },
 ];
 const VOCAB_PREVIEW_TYPES = [
-  { id:"synonym",   label:"Synonym"   },
-  { id:"antonym",   label:"Antonym"   },
-  { id:"definition",label:"Definition"},
-  { id:"fillblank", label:"Fill blank"},
+  { id:"synonym",      label:"Synonym"      },
+  { id:"antonym",      label:"Antonym"      },
+  { id:"definition",   label:"Definition"   },
+  { id:"fillblank",    label:"Fill blank"   },
+  { id:"antonym_pair", label:"Antonym pair" },
+  { id:"synonym_pair", label:"Synonym pair" },
 ];
 
 function QuestionPreview({ maxDifficulty }) {
   const [domain, setDomain]       = useState("vr");
-  const [qType, setQType]         = useState("antonym_pair");
+  const [qType, setQType]         = useState("analogy");
   const [difficulty, setDifficulty] = useState(3);
   const [question, setQuestion]   = useState(null);
   const [error, setError]         = useState(null);
@@ -4820,7 +4789,7 @@ function QuestionPreview({ maxDifficulty }) {
 
   const handleDomainChange = (d) => {
     setDomain(d);
-    setQType(d === "vr" ? "antonym_pair" : "synonym");
+    setQType(d === "vr" ? "analogy" : "synonym");
     setQuestion(null); setError(null);
   };
 
@@ -5371,7 +5340,7 @@ export default function App() {
   const dueCount = loaded ? getDueWords(leitnerBoxes, maxDifficulty).length : 0;
   const masteredCount = VOCAB_BANK.filter(w => w.difficulty <= maxDifficulty && isMastered(w, leitnerBoxes[w.word])).length;
   const vrDueCount = loaded ? getDueVRQuestions(vrLeitnerBoxes, maxDifficulty).length : 0;
-  const vrMasteredCount = [...VR_BANK, ...ANTONYM_BANK, ...SYNONYM_BANK]
+  const vrMasteredCount = [...VR_BANK]
     .filter(q => q.difficulty <= maxDifficulty && (vrLeitnerBoxes[q.id]?.box ?? 0) >= 3).length;
   const todayDone = streak.lastDate === new Date().toDateString();
   const sTabs = [{ id:"practice", label:"Practice" }, { id:"dashboard", label:"Progress" }];
