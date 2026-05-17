@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 
-const VERSION = "1.15.0";
+const VERSION = "1.16.0";
 
 const BASELINE = {
   overall: { score: 108, total: 200, pct: 54 },
@@ -146,6 +146,7 @@ function getUserStorageKeys(userId) {
     vrLeitner:      `11plus:user:${userId}:vr-leitner-v1`,
     progression:    `11plus:user:${userId}:progression-v1`,
     badges:         `11plus:user:${userId}:badges-v1`,
+    letterBlitzBest:`11plus:user:${userId}:letter-blitz-best-v1`,
   };
 }
 
@@ -3688,6 +3689,29 @@ const css = `
   .q-aid-btn { padding:3px 8px; border-radius:5px; border:1px solid rgba(255,255,255,0.25); background:rgba(255,255,255,0.1); font-size:12px; cursor:pointer; color:white; transition:all 0.1s; line-height:1; user-select:none; }
   .q-aid-btn:hover { background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.5); }
   .q-aid-btn.used { background:var(--gold-soft); border-color:var(--gold); color:var(--ink); }
+  /* ── LETTER BLITZ ── */
+  .blitz-wrap { display:flex; flex-direction:column; gap:14px; }
+  .blitz-header { display:flex; justify-content:space-between; align-items:center; }
+  .blitz-counter { font-size:12px; color:var(--ink-soft); font-weight:600; }
+  .blitz-timer { font-size:12px; color:var(--ink-soft); font-weight:600; }
+  .blitz-prompt { font-family:'Fraunces',serif; font-size:28px; font-weight:700; color:var(--ink); text-align:center; padding:18px 0 10px; line-height:1.3; }
+  .blitz-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .blitz-opt { background:var(--surface); border:2px solid var(--border); border-radius:12px; padding:14px 10px; text-align:center; font-size:20px; font-weight:700; color:var(--ink); cursor:pointer; transition:all 0.1s; }
+  .blitz-opt:hover { border-color:var(--accent); background:var(--accent-soft); }
+  .blitz-opt.correct { border-color:var(--green); background:#e8f8e8; color:var(--green); }
+  .blitz-opt.wrong { border-color:var(--red); background:#fce8e8; color:var(--red); }
+  .blitz-opt.reveal { border-color:var(--green); background:#e8f8e8; color:var(--green); }
+  .blitz-opt.disabled { pointer-events:none; opacity:0.5; }
+  .blitz-results { text-align:center; padding:20px 0; }
+  .blitz-score-big { font-family:'Fraunces',serif; font-size:52px; font-weight:700; color:var(--ink); line-height:1; }
+  .blitz-score-sub { font-size:13px; color:var(--ink-soft); margin-top:4px; }
+  .blitz-best-row { margin-top:10px; font-size:13px; color:var(--ink-soft); }
+  .blitz-best-new { color:var(--green); font-weight:700; }
+  .blitz-tile { background:linear-gradient(135deg,#7c3aed 0%,#5b21b6 100%); border-radius:14px; padding:14px 16px; color:white; cursor:pointer; display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+  .blitz-tile-left { display:flex; flex-direction:column; gap:2px; }
+  .blitz-tile-title { font-size:15px; font-weight:700; }
+  .blitz-tile-sub { font-size:11px; opacity:0.8; }
+  .blitz-tile-arrow { font-size:20px; opacity:0.9; }
   .alphabet-row { display:flex; flex-wrap:wrap; gap:3px; margin-top:6px; animation:fadeIn 0.15s ease; }
   .alpha-cell { display:flex; flex-direction:column; align-items:center; background:rgba(255,255,255,0.1); border-radius:4px; padding:2px 4px; min-width:22px; }
   .alpha-letter { font-size:11px; font-weight:700; color:white; line-height:1.2; }
@@ -4046,6 +4070,66 @@ function OptionCard({ opt, selected, correct, answered, onAnswer, onAidUsed, aid
       {showSimple && data?.simpleDefinition && <div className="opt-reveal simple">💡 {data.simpleDefinition}</div>}
     </div>
   );
+}
+
+// ─── LETTER BLITZ QUESTION GENERATOR ─────────────────────────────────────────
+function generateLetterBlitzQueue(count = 20) {
+  const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+  const shuffle = a => { const b = [...a]; for (let i = b.length-1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [b[i],b[j]]=[b[j],b[i]]; } return b; };
+
+  const nearbyNums = (n, avoid) => {
+    const opts = new Set();
+    while (opts.size < 3) {
+      const delta = rnd(-5, 5);
+      const v = n + delta;
+      if (v !== n && v >= 1 && v <= 26 && !avoid.has(v)) opts.add(v);
+    }
+    return [...opts];
+  };
+  const nearbyLetters = (pos, avoid) => {
+    const opts = new Set();
+    while (opts.size < 3) {
+      const delta = rnd(-5, 5);
+      const p = pos + delta;
+      if (p !== pos && p >= 1 && p <= 26 && !avoid.has(p)) opts.add(p);
+    }
+    return [...opts].map(p => ALPHA[p-1]);
+  };
+
+  const types = ['letter_to_pos', 'pos_to_letter', 'shift_forward', 'shift_backward'];
+  const perType = Math.floor(count / types.length);
+  const pool = [];
+  types.forEach(t => {
+    for (let i = 0; i < perType; i++) {
+      if (t === 'letter_to_pos') {
+        const pos = rnd(1, 26);
+        const letter = ALPHA[pos-1];
+        const distractors = nearbyNums(pos, new Set([pos]));
+        pool.push({ type: t, prompt: `What position is  ${letter} ?`, correct: String(pos), options: shuffle([String(pos), ...distractors.map(String)]) });
+      } else if (t === 'pos_to_letter') {
+        const pos = rnd(1, 26);
+        const letter = ALPHA[pos-1];
+        const distractors = nearbyLetters(pos, new Set([pos]));
+        pool.push({ type: t, prompt: `What letter is position  ${pos} ?`, correct: letter, options: shuffle([letter, ...distractors]) });
+      } else if (t === 'shift_forward') {
+        const maxStart = rnd(1, 20);
+        const shift = rnd(2, 6);
+        const result = ALPHA[maxStart - 1 + shift];
+        const resultPos = maxStart + shift;
+        const distractors = nearbyLetters(resultPos, new Set([resultPos]));
+        pool.push({ type: t, prompt: `${ALPHA[maxStart-1]}  +${shift}  = ?`, correct: result, options: shuffle([result, ...distractors]) });
+      } else {
+        const minStart = rnd(7, 26);
+        const shift = rnd(2, 6);
+        const result = ALPHA[minStart - 1 - shift];
+        const resultPos = minStart - shift;
+        const distractors = nearbyLetters(resultPos, new Set([resultPos]));
+        pool.push({ type: t, prompt: `${ALPHA[minStart-1]}  −${shift}  = ?`, correct: result, options: shuffle([result, ...distractors]) });
+      }
+    }
+  });
+  return shuffle(pool);
 }
 
 // ─── VOCAB SESSION ────────────────────────────────────────────────────────────
@@ -4592,6 +4676,87 @@ function VRLetterCodeAnalogy({ q, selected, onAnswer, onAlphabetAid }) {
         })}
       </div>
     </>
+  );
+}
+
+// ─── LETTER BLITZ ─────────────────────────────────────────────────────────────
+function LetterBlitz({ onDone, blitzBest }) {
+  const TOTAL = 20;
+  const [queue] = useState(() => generateLetterBlitzQueue(TOTAL));
+  const [idx, setIdx] = useState(0);
+  const [selected, setSelected] = useState(null);
+  const [score, setScore] = useState(0);
+  const [done, setDone] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const t0 = useRef(Date.now());
+  const advanceTimer = useRef(null);
+
+  useEffect(() => {
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - t0.current) / 1000)), 200);
+    return () => clearInterval(id);
+  }, []);
+
+  const handlePick = (opt) => {
+    if (selected !== null) return;
+    setSelected(opt);
+    const isCorrect = opt === queue[idx].correct;
+    if (isCorrect) setScore(s => s + 1);
+    advanceTimer.current = setTimeout(() => {
+      if (idx + 1 >= TOTAL) {
+        setDone(true);
+      } else {
+        setIdx(i => i + 1);
+        setSelected(null);
+      }
+    }, 550);
+  };
+
+  useEffect(() => () => { if (advanceTimer.current) clearTimeout(advanceTimer.current); }, []);
+
+  if (done) {
+    const timeMs = Date.now() - t0.current;
+    const timeSec = Math.round(timeMs / 1000);
+    const isNewBest = !blitzBest || score > blitzBest.score || (score === blitzBest.score && timeMs < blitzBest.timeMs);
+    return (
+      <div className="card">
+        <div className="card-title">Letter Blitz — Done! 🎉</div>
+        <div className="blitz-results">
+          <div className="blitz-score-big">{score}/{TOTAL}</div>
+          <div className="blitz-score-sub">{timeSec} seconds</div>
+          {isNewBest && <div className="blitz-best-row blitz-best-new">⭐ New personal best!</div>}
+          {!isNewBest && blitzBest && (
+            <div className="blitz-best-row">Best: {blitzBest.score}/{TOTAL} in {Math.round(blitzBest.timeMs/1000)}s</div>
+          )}
+        </div>
+        <button className="next-btn" style={{ marginTop:8 }} onClick={() => onDone(score, timeMs, isNewBest)}>Done →</button>
+      </div>
+    );
+  }
+
+  const q = queue[idx];
+  return (
+    <div className="card">
+      <div className="blitz-wrap">
+        <div className="blitz-header">
+          <div className="blitz-counter">{idx + 1} / {TOTAL}</div>
+          <div className="blitz-timer">⏱ {elapsed}s</div>
+        </div>
+        <div className="blitz-prompt">{q.prompt}</div>
+        <div className="blitz-grid">
+          {q.options.map(opt => {
+            let cls = "blitz-opt";
+            if (selected !== null) {
+              if (opt === q.correct) cls += " correct";
+              else if (opt === selected) cls += " wrong";
+              else cls += " disabled";
+            }
+            return (
+              <div key={opt} className={cls} onClick={() => handlePick(opt)}>{opt}</div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -5680,6 +5845,10 @@ export default function App() {
   const [badges, setBadges] = useState([]);
   const [pendingCelebration, setPendingCelebration] = useState(null);
 
+  // v1.15 Letter Blitz mini-game
+  const [blitzMode, setBlitzMode] = useState(false);
+  const [blitzBest, setBlitzBest] = useState(null); // { score, timeMs }
+
   // v1.13 Phase 0: AI toggle — show key modal if no key configured and not in Cowork
   const handleAiToggle = () => {
     if (aiEnabled) { setAiEnabled(false); return; }
@@ -5709,6 +5878,8 @@ export default function App() {
     setProgressionState(prog);
     const badgeData = await storageGet(keys.badges) || [];
     setBadges(badgeData);
+    const blitzBestData = await storageGet(keys.letterBlitzBest) || null;
+    setBlitzBest(blitzBestData);
   };
 
   useEffect(() => {
@@ -5745,6 +5916,16 @@ export default function App() {
 
   useEffect(() => { setTab(mode === "student" ? "practice" : "dashboard"); setPractising(false); }, [mode]);
   useEffect(() => { setSessionTimedMode(profile?.timedMode || false); }, [profile]);
+
+  const handleBlitzDone = async (score, timeMs, isNewBest) => {
+    if (isNewBest && profile) {
+      const keys = getUserStorageKeys(profile.id);
+      const best = { score, timeMs };
+      await storageSet(keys.letterBlitzBest, best);
+      setBlitzBest(best);
+    }
+    setBlitzMode(false);
+  };
 
   const handleSessionEnd = async (domain, results, aidLog) => {
     const correct = results.filter(r => r.correct).length;
@@ -6036,7 +6217,9 @@ export default function App() {
         {!loaded ? (
           <div className="empty-state"><div className="empty-icon pulsing">📚</div><div className="empty-title">Loading...</div></div>
         ) : tab === "practice" && mode === "student" ? (
-          practising ? (
+          blitzMode ? (
+            <LetterBlitz onDone={handleBlitzDone} blitzBest={blitzBest} />
+          ) : practising ? (
             activeDomain === "vocab"
               ? <VocabSession leitnerBoxes={leitnerBoxes} onSessionEnd={(r, l) => handleSessionEnd("vocab", r, l)} aiEnabled={aiEnabled} mode={mode} maxDifficulty={maxDifficulty} timedMode={sessionTimedMode} />
               : <VRSession vrLeitnerBoxes={vrLeitnerBoxes} onSessionEnd={(r, l) => handleSessionEnd("vr", r, l)} aiEnabled={aiEnabled} mode={mode} maxDifficulty={maxDifficulty} timedMode={sessionTimedMode} progressionState={progressionState} />
@@ -6097,6 +6280,20 @@ export default function App() {
                     ✓ All caught up — come back tomorrow!
                   </div>
                 )}
+              </div>
+              <div className="card" style={{ padding:"12px 14px" }}>
+                <div style={{ fontSize:11, fontWeight:700, color:'var(--ink-soft)', textTransform:'uppercase', letterSpacing:1, marginBottom:8 }}>Mini Games</div>
+                <div className="blitz-tile" onClick={() => setBlitzMode(true)}>
+                  <div className="blitz-tile-left">
+                    <div className="blitz-tile-title">⚡ Letter Blitz</div>
+                    <div className="blitz-tile-sub">
+                      {blitzBest
+                        ? `Best: ${blitzBest.score}/20 in ${Math.round(blitzBest.timeMs/1000)}s`
+                        : '20 questions — learn A=1 to Z=26'}
+                    </div>
+                  </div>
+                  <div className="blitz-tile-arrow">→</div>
+                </div>
               </div>
               {sessionHistory.length > 0 && (
                 <div className="card">
