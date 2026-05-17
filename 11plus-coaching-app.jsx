@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 
-const VERSION = "1.11.0";
+const VERSION = "1.12.0";
 
 const BASELINE = {
   overall: { score: 108, total: 200, pct: 54 },
@@ -49,6 +49,48 @@ function getMaxDifficulty(profile) {
   return 2;
 }
 
+// ─── PROGRESSION BANDS (v1.12) ───────────────────────────────────────────────
+// Difficulty bands for soft progression. 'easy' seeds from age; mastery unlocks next.
+const BAND_ORDER     = ['easy', 'medium', 'hard'];
+const BAND_DIFFICULTY = { easy: 2, medium: 3, hard: 5 };  // maps band → maxDifficulty
+
+// VR types split by tracking method (Leitner vs generated-each-session)
+const LEITNER_VR_TYPES   = ['analogy', 'odd_one_out', 'antonym_pair', 'synonym_pair'];
+const GENERATED_VR_TYPES = ['letter_sequence', 'number_sequence', 'letters_numbers',
+                             'number_bracket', 'equation_completion', 'letter_code_analogy'];
+const ALL_VR_TYPES = [...LEITNER_VR_TYPES, ...GENERATED_VR_TYPES];
+
+// Returns the next band above `band`, or null if already at the top.
+function nextBand(band) {
+  const idx = BAND_ORDER.indexOf(band);
+  return idx >= 0 && idx < BAND_ORDER.length - 1 ? BAND_ORDER[idx + 1] : null;
+}
+
+// Converts a numeric maxDifficulty (from age) to a band name.
+function difficultyToBand(maxDiff) {
+  if (maxDiff <= 2) return 'easy';
+  if (maxDiff <= 3) return 'medium';
+  return 'hard';
+}
+
+// Builds a fresh progressionState for a profile that has none yet (migration).
+// Uses the profile's age-derived maxDifficulty as the starting currentBand.
+function migrateProgressionState(profile) {
+  const startBand = difficultyToBand(getMaxDifficulty(profile));
+  const state = {};
+  ALL_VR_TYPES.forEach(type => {
+    state[type] = {
+      currentBand: startBand,
+      unlockedBand: null,
+      blendRate: 0.20,
+      poorWindowStreak: 0,
+      recentNextBandAttempts: [],
+      ...(GENERATED_VR_TYPES.includes(type) ? { recentSessionAccuracy: [] } : {}),
+    };
+  });
+  return state;
+}
+
 function makeProfileId() {
   return "u" + Math.random().toString(36).slice(2, 9);
 }
@@ -59,6 +101,7 @@ function getUserStorageKeys(userId) {
     sessionHistory: `11plus:user:${userId}:session-history-v1`,
     streakData:     `11plus:user:${userId}:streak-data-v1`,
     vrLeitner:      `11plus:user:${userId}:vr-leitner-v1`,
+    progression:    `11plus:user:${userId}:progression-v1`,
   };
 }
 
@@ -2477,6 +2520,219 @@ function letterCodeAnalogyGenerator(maxDifficulty) {
   };
 }
 
+// ─── PROGRESSION LOGIC (v1.12) ───────────────────────────────────────────────
+
+// Returns true if the student has mastered their currentBand for this type.
+// Leitner types: ≥50% of type's questions in boxes 4–6.
+// Generated types: ≥80% accuracy across last 3 recorded sessions.
+function checkMastery(type, progressionState, vrLeitnerBoxes) {
+  const typeState = progressionState?.[type];
+  if (!typeState) return false;
+  if (typeState.unlockedBand) return false;         // next band already unlocked
+  if (typeState._stepBackedThisUpdate) return false; // just stepped back — don't immediately re-unlock
+  const maxDiff = BAND_DIFFICULTY[typeState.currentBand];
+
+  if (LEITNER_VR_TYPES.includes(type)) {
+    const allOfType = [...VR_BANK, ...ANTONYM_BANK, ...SYNONYM_BANK]
+      .filter(q => q.type === type && q.difficulty <= maxDiff);
+    if (allOfType.length === 0) return false;
+    const inHighBoxes = allOfType.filter(q => (vrLeitnerBoxes[q.id]?.box ?? 0) >= 4).length;
+    return inHighBoxes / allOfType.length >= 0.5;
+  } else {
+    const sessions = typeState.recentSessionAccuracy || [];
+    const relevant = sessions.slice(-3);
+    if (relevant.length === 0) return false;
+    const totalCorrect  = relevant.reduce((s, r) => s + r.correct, 0);
+    const totalAttempts = relevant.reduce((s, r) => s + r.total, 0);
+    return totalAttempts > 0 && totalCorrect / totalAttempts >= 0.8;
+  }
+}
+
+// ─── VR QUEUE BUILDER (v1.12) ─────────────────────────────────────────────────
+
+// Dispatcher: generate a single question for a given generated VR type at maxDiff.
+function generateVRByType(type, maxDiff) {
+  switch (type) {
+    case 'letter_sequence':     return generateLetterSequence(maxDiff);
+    case 'number_sequence':     return generateNumberSequence(maxDiff);
+    case 'letters_numbers':     return lettersNumbersGenerator(maxDiff);
+    case 'number_bracket':      return numberBracketGenerator(maxDiff);
+    case 'equation_completion': return equationCompletionGenerator(maxDiff);
+    case 'letter_code_analogy': return letterCodeAnalogyGenerator(maxDiff);
+    default: return null;
+  }
+}
+
+// Returns due Leitner-tracked VR questions blended per-type based on progressionState.
+// Items get `isNextBand: bool` so session tracking can attribute them correctly.
+function getDueVRQuestionsForBand(vrLeitnerBoxes, progressionState) {
+  const now = Date.now();
+  const intervals = [0, 1, 3, 7, 14, 30];
+  const isDue = (id) => {
+    const entry = vrLeitnerBoxes[id];
+    if (!entry) return true;
+    return (now - entry.lastSeen) / 86400000 >= intervals[Math.min(entry.box, 5)];
+  };
+
+  const allTracked = [...VR_BANK, ...ANTONYM_BANK, ...SYNONYM_BANK];
+  const result = [];
+
+  LEITNER_VR_TYPES.forEach(type => {
+    const typeState = progressionState[type];
+    const currDiff = BAND_DIFFICULTY[typeState?.currentBand || 'hard'];
+    const unlockedBand = typeState?.unlockedBand;
+    const nextDiff = unlockedBand ? BAND_DIFFICULTY[unlockedBand] : null;
+    const blendRate = typeState?.blendRate ?? 0.20;
+
+    const allOfType = allTracked.filter(q => q.type === type);
+
+    // Items due at current band
+    const currDue = allOfType.filter(q => q.difficulty <= currDiff && isDue(q.id));
+
+    if (nextDiff) {
+      // Items at next band (difficulty > currDiff AND ≤ nextDiff)
+      const nextDue = allOfType.filter(q => q.difficulty > currDiff && q.difficulty <= nextDiff && isDue(q.id));
+      // Per-type slot budget: up to 5 items, split by blendRate
+      const totalSlots = Math.min(currDue.length + nextDue.length, 5);
+      const nextCount = Math.round(totalSlots * blendRate);
+      const currCount = totalSlots - nextCount;
+      shuffle(nextDue).slice(0, nextCount).forEach(q => result.push({ ...q, isNextBand: true }));
+      shuffle(currDue).slice(0, currCount).forEach(q => result.push({ ...q, isNextBand: false }));
+    } else {
+      currDue.forEach(q => result.push({ ...q, isNextBand: false }));
+    }
+  });
+
+  // Pre-compute options (same logic as getDueVRQuestions)
+  return shuffle(result).map(q => {
+    if (q.type === "analogy") return { ...q, options: shuffle([q.correct, ...q.distractors]) };
+    if (q.type === "odd_one_out") return { ...q, displayWords: shuffle([...q.words]) };
+    if (q.type === "antonym_pair") {
+      const correct = q.antonyms[Math.floor(Math.random() * q.antonyms.length)];
+      const distractors = shuffle(q.synonymPool.filter(d => d !== correct)).slice(0, 3);
+      return { ...q, correct, options: shuffle([correct, ...distractors]) };
+    }
+    if (q.type === "synonym_pair") {
+      const correct = q.synonyms[Math.floor(Math.random() * q.synonyms.length)];
+      const distractors = shuffle(q.antonymPool.filter(d => d !== correct)).slice(0, 3);
+      return { ...q, correct, options: shuffle([correct, ...distractors]) };
+    }
+    return q;
+  });
+}
+
+// Builds the full VR session queue, blending current-band and next-band items per type.
+function buildVRQueue(vrLeitnerBoxes, maxDifficulty, progressionState) {
+  if (!progressionState) {
+    // No progression state yet — legacy behaviour
+    const due = getDueVRQuestions(vrLeitnerBoxes, maxDifficulty).slice(0, 12);
+    const generated = GENERATED_VR_TYPES.map(t => generateVRByType(t, maxDifficulty)).filter(Boolean);
+    return shuffle([...due, ...generated]);
+  }
+
+  // Leitner-tracked items (with per-type blending, cap at 12)
+  const leitnerItems = getDueVRQuestionsForBand(vrLeitnerBoxes, progressionState).slice(0, 12);
+
+  // One generated question per type, band chosen by blendRate coin-flip
+  const generatedItems = GENERATED_VR_TYPES.map(type => {
+    const typeState = progressionState[type];
+    const currDiff = BAND_DIFFICULTY[typeState?.currentBand || difficultyToBand(maxDifficulty)];
+    const nextDiff = typeState?.unlockedBand ? BAND_DIFFICULTY[typeState.unlockedBand] : null;
+    const blendRate = typeState?.blendRate ?? 0.20;
+    const useNextBand = nextDiff !== null && Math.random() < blendRate;
+    const diff = useNextBand ? nextDiff : currDiff;
+    const q = generateVRByType(type, diff);
+    return q ? { ...q, isNextBand: useNextBand } : null;
+  }).filter(Boolean);
+
+  return shuffle([...leitnerItems, ...generatedItems]);
+}
+
+// ─── PROGRESSION STATE UPDATER (v1.12) ────────────────────────────────────────
+
+// Called at end of a VR session. Returns an updated copy of progressionState.
+// Handles: session accuracy recording, next-band attempt tracking, auto-tuning
+// (both up and down), step-back on 2 consecutive poor windows, mastery unlock.
+function updateProgressionState(results, prevState, vrLeitnerBoxes) {
+  const now = Date.now();
+  const sessionId = `sess-${now}`;
+  // Deep copy to avoid mutating state
+  const updated = JSON.parse(JSON.stringify(prevState));
+
+  ALL_VR_TYPES.forEach(type => {
+    const st = updated[type];
+    if (!st) return;
+
+    // ── 1. SESSION ACCURACY for generated types (mastery input) ──────────────
+    if (GENERATED_VR_TYPES.includes(type)) {
+      const typeResults = results.filter(r => r.type === type);
+      if (typeResults.length > 0) {
+        const correct = typeResults.filter(r => r.correct).length;
+        const total   = typeResults.length;
+        const existing = st.recentSessionAccuracy || [];
+        st.recentSessionAccuracy = [...existing.slice(-2), { sessionId, correct, total }];
+      }
+    }
+
+    // ── 2. NEXT-BAND ATTEMPT TRACKING ────────────────────────────────────────
+    if (st.unlockedBand) {
+      const nextBandResults = results.filter(r => r.type === type && r.isNextBand);
+      if (nextBandResults.length > 0) {
+        const newAttempts = nextBandResults.map(r => ({ correct: r.correct, ts: now }));
+        st.recentNextBandAttempts = [...st.recentNextBandAttempts, ...newAttempts].slice(-40);
+      }
+
+      // ── 3. AUTO-TUNING: evaluate rolling window of 20 ────────────────────
+      const attempts = st.recentNextBandAttempts;
+      if (attempts.length >= 20) {
+        const window   = attempts.slice(-20);
+        const accuracy = window.filter(a => a.correct).length / 20;
+
+        if (accuracy >= 0.80) {
+          // Performing well: blend more
+          st.blendRate = Math.max(0.10, Math.min(0.60, st.blendRate + 0.05));
+          st.recentNextBandAttempts = attempts.slice(0, -20); // reset window
+          st.poorWindowStreak = 0;
+        } else if (accuracy < 0.60) {
+          st.poorWindowStreak = (st.poorWindowStreak || 0) + 1;
+          if (st.poorWindowStreak >= 2) {
+            // Two consecutive poor windows → step back
+            st.unlockedBand             = null;
+            st.blendRate                = 0.20;
+            st.recentNextBandAttempts   = [];
+            st.poorWindowStreak         = 0;
+            st._stepBackedThisUpdate    = true;
+          } else {
+            // First poor window: reduce blend, reset window
+            st.blendRate = Math.max(0.10, Math.min(0.60, st.blendRate - 0.05));
+            st.recentNextBandAttempts = attempts.slice(0, -20);
+          }
+        } else {
+          // 60–80%: hold steady, reset window
+          st.recentNextBandAttempts = attempts.slice(0, -20);
+          st.poorWindowStreak = 0;
+        }
+      }
+    }
+
+    // ── 4. CHECK MASTERY & UNLOCK NEXT BAND ──────────────────────────────────
+    if (!st.unlockedBand) {
+      const nb = nextBand(st.currentBand);
+      if (nb && checkMastery(type, updated, vrLeitnerBoxes)) {
+        st.unlockedBand           = nb;
+        st.blendRate              = 0.20;
+        st.recentNextBandAttempts = [];
+        st.poorWindowStreak       = 0;
+      }
+    }
+
+    // Clean up internal flag (not persisted beyond this call)
+    delete st._stepBackedThisUpdate;
+  });
+
+  return updated;
+}
+
 // ─── DOMAIN AUTO-ROTATION ─────────────────────────────────────────────────────
 // Returns which domain to run next based on Leitner state + session history.
 // Receives pre-computed counts to avoid re-running getDue* functions.
@@ -3553,21 +3809,8 @@ function VRLetterCodeAnalogy({ q, selected, onAnswer }) {
 }
 
 // ─── VR SESSION ───────────────────────────────────────────────────────────────
-function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficulty = 5, timedMode = false }) {
-  const [queue] = useState(() => {
-    const due = getDueVRQuestions(vrLeitnerBoxes, maxDifficulty).slice(0, 12);
-    // Inject 1 of each of the 6 generated VR types alongside Leitner-due items.
-    // Generated items have id:null → never tracked in Leitner (see handleSessionEnd guard).
-    const generated = [
-      generateLetterSequence(maxDifficulty),
-      generateNumberSequence(maxDifficulty),
-      lettersNumbersGenerator(maxDifficulty),
-      numberBracketGenerator(maxDifficulty),
-      equationCompletionGenerator(maxDifficulty),
-      letterCodeAnalogyGenerator(maxDifficulty),
-    ];
-    return shuffle([...due, ...generated]);
-  });
+function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficulty = 5, timedMode = false, progressionState = null }) {
+  const [queue] = useState(() => buildVRQueue(vrLeitnerBoxes, maxDifficulty, progressionState));
   const [idx, setIdx] = useState(0);
   const [selected, setSelected] = useState(null);
   const [results, setResults] = useState([]);
@@ -3605,7 +3848,7 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
     const q = queue[idx];
     const isTimedOut = opt === "__timeout__";
     const isCorrect = !isTimedOut && opt === q.correct;
-    setResults(r => [...r, { id: q.id, correct: isCorrect, type: q.type, timeMs, timedOut: isTimedOut }]);
+    setResults(r => [...r, { id: q.id, correct: isCorrect, type: q.type, timeMs, timedOut: isTimedOut, isNextBand: q.isNextBand || false }]);
 
     if (aiEnabled) {
       setAiLoading(true);
@@ -3741,6 +3984,108 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
         )}
       </div>
     </>
+  );
+}
+
+// ─── PROGRESSION PANEL (v1.12) ────────────────────────────────────────────────
+const VR_TYPE_LABELS = {
+  analogy:            'Analogy',
+  odd_one_out:        'Odd One Out',
+  antonym_pair:       'Antonym Pair',
+  synonym_pair:       'Synonym Pair',
+  letter_sequence:    'Letter Seq.',
+  number_sequence:    'Number Seq.',
+  letters_numbers:    'Letters=Nums',
+  number_bracket:     'Num. Bracket',
+  equation_completion:'Equation',
+  letter_code_analogy:'Code Analogy',
+};
+
+const BAND_PILL_COLOUR = { easy: 'var(--green)', medium: 'var(--gold)', hard: 'var(--accent)' };
+
+function ProgressionPanel({ progressionState, onOverride }) {
+  if (!progressionState) return null;
+
+  return (
+    <div className="card">
+      <div className="card-title">VR Progression Bands</div>
+      <div className="card-sub">Per-type difficulty and auto-tuning status</div>
+      <div style={{ overflowX:'auto' }}>
+        <table className="aids-table" style={{ minWidth:420 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign:'left' }}>Type</th>
+              <th>Band</th>
+              <th>Unlocked</th>
+              <th>Blend %</th>
+              <th>Next-band acc.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ALL_VR_TYPES.map(type => {
+              const st = progressionState[type];
+              if (!st) return null;
+              const attempts = st.recentNextBandAttempts || [];
+              const last20   = attempts.slice(-20);
+              const acc      = last20.length > 0
+                ? Math.round(last20.filter(a => a.correct).length / last20.length * 100)
+                : null;
+              const blendPct = Math.round((st.blendRate ?? 0.20) * 100);
+
+              const pillStyle = (band) => ({
+                display:'inline-block', padding:'1px 7px', borderRadius:10,
+                background: BAND_PILL_COLOUR[band] || 'var(--border)',
+                color: band === 'medium' ? 'var(--ink)' : 'white',
+                fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.04em',
+              });
+
+              return (
+                <tr key={type}>
+                  <td style={{ fontSize:11, fontWeight:600, paddingRight:6 }}>{VR_TYPE_LABELS[type]}</td>
+                  <td style={{ textAlign:'center' }}>
+                    <span style={pillStyle(st.currentBand)}>{st.currentBand}</span>
+                  </td>
+                  <td style={{ textAlign:'center' }}>
+                    {st.unlockedBand
+                      ? <span style={pillStyle(st.unlockedBand)}>{st.unlockedBand}</span>
+                      : <span style={{ color:'var(--ink-soft)', fontSize:11 }}>locked</span>}
+                  </td>
+                  <td style={{ textAlign:'center' }}>
+                    {st.unlockedBand ? (
+                      <div style={{ display:'flex', alignItems:'center', gap:5, justifyContent:'center' }}>
+                        <input
+                          type="range" min={10} max={60} step={5} value={blendPct}
+                          onChange={e => onOverride(type, 'blendRate', parseInt(e.target.value, 10) / 100)}
+                          style={{ width:55, cursor:'pointer' }}
+                        />
+                        <span style={{ fontSize:11, minWidth:28, fontWeight:600 }}>{blendPct}%</span>
+                      </div>
+                    ) : (
+                      <span style={{ color:'var(--ink-soft)', fontSize:11 }}>—</span>
+                    )}
+                  </td>
+                  <td style={{ textAlign:'center', fontSize:11 }}>
+                    {acc !== null
+                      ? <><span style={{ fontWeight:700, color: acc >= 80 ? 'var(--green)' : acc >= 60 ? 'var(--gold)' : 'var(--red)' }}>{acc}%</span>
+                          <span style={{ color:'var(--ink-soft)', marginLeft:3 }}>({last20.length}q)</span></>
+                      : <span style={{ color:'var(--ink-soft)' }}>—</span>}
+                    {st.poorWindowStreak > 0 && (
+                      <span title="Consecutive poor windows — step-back imminent" style={{ marginLeft:4, color:'var(--red)', fontSize:11 }}>
+                        ⚠{st.poorWindowStreak}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ marginTop:10, fontSize:11, color:'var(--ink-soft)', lineHeight:1.4 }}>
+        Auto-unlock triggers at 50% mastery (Leitner types) or 80% across 3 sessions (generated types).
+        Auto-tuning window: 20 next-band attempts — ≥80% blends more, &lt;60% twice → steps back.
+      </div>
+    </div>
   );
 }
 
@@ -4406,6 +4751,9 @@ export default function App() {
   const [profiles, setProfiles] = useState([]);
   const [showProfileSelect, setShowProfileSelect] = useState(false);
 
+  // v1.12 progression state (per active profile, stored in its own key)
+  const [progressionState, setProgressionState] = useState(null);
+
   // Load user data for a given profile
   const loadUserData = async (prof) => {
     const keys = getUserStorageKeys(prof.id);
@@ -4413,10 +4761,17 @@ export default function App() {
     const vrBoxes    = await storageGet(keys.vrLeitner)       || {};
     const history    = await storageGet(keys.sessionHistory) || [];
     const streakData = await storageGet(keys.streakData)     || { count: 0, lastDate: null };
+    // v1.12: load or migrate progressionState
+    let prog = await storageGet(keys.progression);
+    if (!prog) {
+      prog = migrateProgressionState(prof);
+      await storageSet(keys.progression, prog);
+    }
     setLeitnerBoxes(boxes);
     setVrLeitnerBoxes(vrBoxes);
     setSessionHistory(history);
     setStreak(streakData);
+    setProgressionState(prog);
   };
 
   useEffect(() => {
@@ -4496,6 +4851,13 @@ export default function App() {
       });
       setVrLeitnerBoxes(newVrBoxes);
       await storageSet(userKeys.vrLeitner, newVrBoxes);
+
+      // v1.12: update progression state (mastery checks, auto-tuning, step-back)
+      if (progressionState) {
+        const newProg = updateProgressionState(results, progressionState, newVrBoxes);
+        setProgressionState(newProg);
+        await storageSet(userKeys.progression, newProg);
+      }
     }
 
     setStreak(newStreak);
@@ -4511,6 +4873,7 @@ export default function App() {
     setVrLeitnerBoxes({});
     setSessionHistory([]);
     setStreak({ count: 0, lastDate: null });
+    setProgressionState(null);
     setPractising(false);
     setProfile(newProfile);
     await storageSet(ACTIVE_PROFILE_KEY, newProfile.id);
@@ -4536,18 +4899,32 @@ export default function App() {
 
   const handleResetProfile = async (profileId) => {
     const userKeys = getUserStorageKeys(profileId);
+    const prof = profiles.find(p => p.id === profileId);
+    const freshProg = prof ? migrateProgressionState(prof) : null;
     await storageSet(userKeys.leitnerBoxes,   {});
     await storageSet(userKeys.vrLeitner,      {});
     await storageSet(userKeys.sessionHistory, []);
     await storageSet(userKeys.streakData,     { count: 0, lastDate: null });
+    if (freshProg) await storageSet(userKeys.progression, freshProg);
     // If resetting the active profile, wipe in-memory state immediately
     if (profileId === profile?.id) {
       setLeitnerBoxes({});
       setVrLeitnerBoxes({});
       setSessionHistory([]);
       setStreak({ count: 0, lastDate: null });
+      setProgressionState(freshProg);
       setPractising(false);
     }
+  };
+
+  // v1.12: parent/coach can manually override blendRate for any VR type
+  const handleOverrideProgression = async (type, key, value) => {
+    if (!progressionState) return;
+    const updated = JSON.parse(JSON.stringify(progressionState));
+    if (updated[type]) updated[type][key] = value;
+    setProgressionState(updated);
+    const userKeys = getUserStorageKeys(profile.id);
+    await storageSet(userKeys.progression, updated);
   };
 
   const maxDifficulty = getMaxDifficulty(profile);
@@ -4608,7 +4985,7 @@ export default function App() {
           practising ? (
             activeDomain === "vocab"
               ? <VocabSession leitnerBoxes={leitnerBoxes} onSessionEnd={(r, l) => handleSessionEnd("vocab", r, l)} aiEnabled={aiEnabled} mode={mode} maxDifficulty={maxDifficulty} timedMode={sessionTimedMode} />
-              : <VRSession vrLeitnerBoxes={vrLeitnerBoxes} onSessionEnd={(r, l) => handleSessionEnd("vr", r, l)} aiEnabled={aiEnabled} mode={mode} maxDifficulty={maxDifficulty} timedMode={sessionTimedMode} />
+              : <VRSession vrLeitnerBoxes={vrLeitnerBoxes} onSessionEnd={(r, l) => handleSessionEnd("vr", r, l)} aiEnabled={aiEnabled} mode={mode} maxDifficulty={maxDifficulty} timedMode={sessionTimedMode} progressionState={progressionState} />
           ) : (
             <>
               {streak.count >= 2 && <div className="streak-banner">🔥 {streak.count}-day streak — keep it up!</div>}
@@ -4669,7 +5046,10 @@ export default function App() {
             </>
           )
         ) : tab === "dashboard" ? (
-          <Dashboard leitnerBoxes={leitnerBoxes} sessionHistory={sessionHistory} />
+          <>
+            <Dashboard leitnerBoxes={leitnerBoxes} sessionHistory={sessionHistory} />
+            <ProgressionPanel progressionState={progressionState} onOverride={handleOverrideProgression} />
+          </>
         ) : tab === "advisor" ? (
           <CoachAdvisor sessionHistory={sessionHistory} leitnerBoxes={leitnerBoxes} />
         ) : tab === "preview" ? (
