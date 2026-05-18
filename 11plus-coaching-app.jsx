@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 
-const VERSION = "1.16.0";
+const VERSION = "1.17.0";
 
 const BASELINE = {
   overall: { score: 108, total: 200, pct: 54 },
@@ -5598,23 +5598,46 @@ const VOCAB_PREVIEW_TYPES = [
   { id:"synonym_pair", label:"Synonym pair" },
 ];
 
-function QuestionPreview({ maxDifficulty }) {
-  const [domain, setDomain]       = useState("vr");
-  const [qType, setQType]         = useState("analogy");
+function QuestionPreview({ maxDifficulty, aiEnabled }) {
+  const [domain, setDomain]         = useState("vr");
+  const [qType, setQType]           = useState("analogy");
   const [difficulty, setDifficulty] = useState(3);
-  const [question, setQuestion]   = useState(null);
-  const [error, setError]         = useState(null);
+  const [question, setQuestion]     = useState(null);
+  const [error, setError]           = useState(null);
+  const [selected, setSelected]     = useState(null);
+  const [elapsed, setElapsed]       = useState(0);
+  const [aiCoach, setAiCoach]       = useState(null);
+  const [aiLoading, setAiLoading]   = useState(false);
+  const [aidLog, setAidLog]         = useState({});
+  const t0          = useRef(Date.now());
+  const answerTimeMs = useRef(0);
+  const alphabetAidUsed = useRef(false);
 
   const types = domain === "vr" ? VR_PREVIEW_TYPES : VOCAB_PREVIEW_TYPES;
+
+  // Elapsed timer — runs while question is unanswered
+  useEffect(() => {
+    if (!question || selected !== null) return;
+    t0.current = Date.now();
+    setElapsed(0);
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - t0.current) / 1000)), 500);
+    return () => clearInterval(id);
+  }, [question, selected]);
+
+  const reset = () => {
+    setQuestion(null); setError(null); setSelected(null); setElapsed(0);
+    setAiCoach(null); setAiLoading(false); setAidLog({});
+    alphabetAidUsed.current = false;
+  };
 
   const handleDomainChange = (d) => {
     setDomain(d);
     setQType(d === "vr" ? "analogy" : "synonym");
-    setQuestion(null); setError(null);
+    reset();
   };
 
   const generate = () => {
-    setError(null);
+    reset();
     try {
       let q = null;
       if (domain === "vocab") {
@@ -5638,19 +5661,13 @@ function QuestionPreview({ maxDifficulty }) {
           const correct = item.synonyms[Math.floor(Math.random() * item.synonyms.length)];
           const distractors = shuffle(item.antonymPool.filter(d => d !== correct)).slice(0, 3);
           q = { ...item, correct, options: shuffle([correct, ...distractors]) };
-        } else if (qType === "letter_sequence") {
-          q = generateLetterSequence(difficulty);
-        } else if (qType === "number_sequence") {
-          q = generateNumberSequence(difficulty);
-        } else if (qType === "letters_numbers") {
-          q = lettersNumbersGenerator(difficulty);
-        } else if (qType === "number_bracket") {
-          q = numberBracketGenerator(difficulty);
-        } else if (qType === "equation_completion") {
-          q = equationCompletionGenerator(difficulty);
-        } else if (qType === "letter_code_analogy") {
-          q = letterCodeAnalogyGenerator(difficulty);
-        } else if (qType === "analogy") {
+        } else if (qType === "letter_sequence")    { q = generateLetterSequence(difficulty); }
+        else if (qType === "number_sequence")      { q = generateNumberSequence(difficulty); }
+        else if (qType === "letters_numbers")      { q = lettersNumbersGenerator(difficulty); }
+        else if (qType === "number_bracket")       { q = numberBracketGenerator(difficulty); }
+        else if (qType === "equation_completion")  { q = equationCompletionGenerator(difficulty); }
+        else if (qType === "letter_code_analogy")  { q = letterCodeAnalogyGenerator(difficulty); }
+        else if (qType === "analogy") {
           const pool = VR_BANK.filter(b => b.type === "analogy" && b.difficulty <= difficulty);
           if (!pool.length) { setError("No analogy items at this difficulty."); return; }
           const item = pool[Math.floor(Math.random() * pool.length)];
@@ -5666,58 +5683,174 @@ function QuestionPreview({ maxDifficulty }) {
     } catch (e) { setError("Generation error — check console."); console.error(e); }
   };
 
+  const handleAid = (opt, type) => {
+    setAidLog(prev => ({ ...prev, [opt]: { ...prev[opt], [type]: true } }));
+  };
+
+  const handleAnswer = async (opt) => {
+    if (selected !== null || !question) return;
+    const timeMs = Date.now() - t0.current;
+    answerTimeMs.current = timeMs;
+    setSelected(opt);
+    const q = question;
+    const isCorrect = opt === q.correct;
+    const anyAid = Object.values(aidLog).some(a => Object.values(a).some(Boolean));
+
+    if (aiEnabled) {
+      setAiLoading(true);
+      try {
+        const sys = `You are an 11+ coaching analyst reviewing a test question. Write EXACTLY 2 sentences: one observation on this specific answer (time taken, whether aids were used, what the wrong choice reveals), one concrete teaching action. No waffle.`;
+        let user;
+        if (isCorrect) {
+          user = `Coach got "${q.correct}" RIGHT in ${(timeMs/1000).toFixed(1)}s (aids used: ${anyAid}). One brief observation sentence:`;
+        } else if (domain === "vocab") {
+          const wordDef = WORD_MAP[q.word]?.simpleDefinition || "";
+          const rootTip = ROOT_TIPS[q.word] || "";
+          user = `Coach got "${q.word}" WRONG (${q.type}) — chose "${opt}", correct="${q.correct}" (${wordDef}${rootTip ? `; hook: ${rootTip}` : ""}). Time: ${(timeMs/1000).toFixed(1)}s, aids: ${anyAid}. Explain the distinction in 2 coaching sentences.`;
+        } else if (q.type === "analogy") {
+          user = `Coach got analogy wrong: "${q.given[0]} : ${q.given[1]} :: ${q.stem} : ___". Chose "${opt}", correct is "${q.correct}". ${(timeMs/1000).toFixed(1)}s. Explain the relationship in 2 coaching sentences.`;
+        } else if (q.type === "odd_one_out") {
+          user = `Coach got odd-one-out wrong: chose "${opt}" from [${q.words.join(", ")}]. Correct: "${q.correct}". Explanation: ${q.explanation}. ${(timeMs/1000).toFixed(1)}s. 2 coaching sentences.`;
+        } else if (q.type === "antonym_pair") {
+          user = `Coach chose "${opt}" as antonym of "${q.word}". Correct: "${q.correct}". ${(timeMs/1000).toFixed(1)}s. 2 coaching sentences on the distinction.`;
+        } else if (q.type === "synonym_pair") {
+          user = `Coach chose "${opt}" as synonym of "${q.word}". Correct: "${q.correct}". ${(timeMs/1000).toFixed(1)}s. 2 coaching sentences on the distinction.`;
+        } else if (q.type === "letter_sequence") {
+          user = `Coach got letter sequence wrong: ${q.sequence.join(" ")} → ? Chose "${opt}", correct "${q.correct}". Rule: ${q.rule}. ${(timeMs/1000).toFixed(1)}s. 2 coaching sentences.`;
+        } else if (q.type === "number_sequence") {
+          user = `Coach got number sequence wrong: ${q.sequence.join(", ")} → ? Chose "${opt}", correct "${q.correct}". Rule: ${q.rule}. ${(timeMs/1000).toFixed(1)}s. 2 coaching sentences.`;
+        } else if (q.type === "letters_numbers") {
+          user = `Coach got Letters=Numbers wrong. Code: ${q.rule}. Expression: ${q.expression}. Chose ${opt}, correct ${q.correct}. ${(timeMs/1000).toFixed(1)}s. 2 coaching sentences.`;
+        } else if (q.type === "number_bracket") {
+          const ex = q.examples;
+          const exShown = ex.slice(0, 2).map(e => `${e.outer1}(${e.inner})${e.outer2}`).join("  ");
+          const [qa, qb] = [ex[2].outer1, ex[2].outer2];
+          user = `Coach got bracket puzzle wrong. Examples: ${exShown}. Question: ${qa}(?)${qb}. Chose ${opt}, correct ${q.correct}. Rule: ${q.rule}. ${(timeMs/1000).toFixed(1)}s. Show the step-by-step for row 1 then apply to the question, in 2 sentences.`;
+        } else if (q.type === "equation_completion") {
+          user = `Coach got equation wrong. ${q.lhs} = ${q.rhs}. Chose ${opt}, correct ${q.correct}. ${(timeMs/1000).toFixed(1)}s. 2 coaching sentences showing the working.`;
+        } else if (q.type === "letter_code_analogy") {
+          user = `Coach got letter code analogy wrong: ${q.pair1.join("")} : ${q.pair2.join("")} :: ${q.pair3.join("")} : ? Chose "${opt}", correct "${q.correct}". Rule: ${q.rule}. ${(timeMs/1000).toFixed(1)}s. Explain the shift method in 2 coaching sentences.`;
+        } else {
+          user = `Coach got a question wrong. Chose "${opt}", correct "${q.correct}". ${(timeMs/1000).toFixed(1)}s. 2 coaching sentences.`;
+        }
+        const text = await callAI(user, sys);
+        setAiCoach(text || "");
+      } catch { setAiCoach(null); }
+      setAiLoading(false);
+    }
+  };
+
+  const isCorrect = selected !== null && question && selected === question.correct;
+  const letterTypes = ["letter_sequence", "letters_numbers", "letter_code_analogy"];
+
   return (
-    <div className="card">
-      <div className="card-title">Preview Questions</div>
-      <div className="card-sub">Test each question type at any difficulty — answer is shown immediately</div>
-      <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap", marginTop:12 }}>
-        <select className="preview-select" value={domain} onChange={e => handleDomainChange(e.target.value)}>
-          <option value="vr">Verbal Reasoning</option>
-          <option value="vocab">Vocabulary</option>
-        </select>
-        <select className="preview-select" value={qType} onChange={e => { setQType(e.target.value); setQuestion(null); setError(null); }}>
-          {types.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-        </select>
-        <select className="preview-select" value={difficulty} onChange={e => { setDifficulty(+e.target.value); setQuestion(null); setError(null); }}>
-          {[1,2,3,4,5].map(d => <option key={d} value={d}>Difficulty {d}</option>)}
-        </select>
+    <>
+      <div className="card">
+        <div className="card-title">Preview Questions</div>
+        <div className="card-sub">Full student experience — choose type and difficulty, then answer for real</div>
+        <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap", marginTop:12 }}>
+          <select className="preview-select" value={domain} onChange={e => handleDomainChange(e.target.value)}>
+            <option value="vr">Verbal Reasoning</option>
+            <option value="vocab">Vocabulary</option>
+          </select>
+          <select className="preview-select" value={qType} onChange={e => { setQType(e.target.value); reset(); }}>
+            {types.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+          <select className="preview-select" value={difficulty} onChange={e => { setDifficulty(+e.target.value); reset(); }}>
+            {[1,2,3,4,5].map(d => <option key={d} value={d}>Difficulty {d}</option>)}
+          </select>
+        </div>
+        <button className="next-btn" style={{ width:"100%", marginBottom: question ? 0 : 0 }} onClick={generate}>
+          {question ? "New example →" : "Generate example →"}
+        </button>
+        {error && <div style={{ color:"var(--red)", fontSize:13, marginTop:10 }}>{error}</div>}
       </div>
-      <button className="next-btn" style={{ width:"100%", marginBottom:14 }} onClick={generate}>
-        Generate example →
-      </button>
-      {error && <div style={{ color:"var(--red)", fontSize:13, marginBottom:10 }}>{error}</div>}
-      {question && (
-        <div style={{ border:"2px solid var(--border)", borderRadius:"var(--radius-sm)", overflow:"hidden" }}>
-          <div style={{ background:"var(--ink)", borderRadius:"var(--radius-sm) var(--radius-sm) 0 0", padding:"18px 20px 16px" }}>
-            {(question.type === "antonym_pair" || question.type === "synonym_pair") && <VRWordPair q={question} selected={question.correct} onAnswer={() => {}} />}
-            {(question.type === "letter_sequence" || question.type === "number_sequence") && <VRSequence q={question} selected={question.correct} onAnswer={() => {}} />}
-            {question.type === "letters_numbers" && <VRLettersNumbers q={question} selected={question.correct} onAnswer={() => {}} />}
-            {question.type === "number_bracket" && <VRNumberBracket q={question} selected={question.correct} onAnswer={() => {}} />}
-            {question.type === "equation_completion" && <VREquationCompletion q={question} selected={question.correct} onAnswer={() => {}} />}
-            {question.type === "letter_code_analogy" && <VRLetterCodeAnalogy q={question} selected={question.correct} onAnswer={() => {}} />}
-            {question.type === "analogy" && <VRAnalogy q={question} selected={question.correct} onAnswer={() => {}} />}
-            {question.type === "odd_one_out" && <VROddOneOut q={question} selected={question.correct} onAnswer={() => {}} />}
+
+      {question && domain === "vr" && (
+        <div style={{ background:"var(--ink)", borderRadius:"var(--radius)", padding:"18px 20px 16px" }}>
+          <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:6 }}>
+            <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>⏱ {selected !== null ? `${(answerTimeMs.current/1000).toFixed(1)}s` : `${elapsed}s`}</span>
           </div>
-          {domain === "vocab" && question.options && (
-            <div style={{ padding:"12px 14px 4px" }}>
-              <div className="options-grid">
-                {question.options.map(opt => (
-                  <div key={opt} className={`opt-card${opt === question.correct ? " correct" : ""}`}>
-                    <div className="opt-top"><span className="opt-word">{opt}</span></div>
-                  </div>
-                ))}
+          {question.type === "analogy"         && <VRAnalogy          q={question} selected={selected} onAnswer={handleAnswer} />}
+          {question.type === "odd_one_out"     && <VROddOneOut        q={question} selected={selected} onAnswer={handleAnswer} />}
+          {(question.type === "antonym_pair" || question.type === "synonym_pair") && <VRWordPair q={question} selected={selected} onAnswer={handleAnswer} />}
+          {(question.type === "letter_sequence" || question.type === "number_sequence") && <VRSequence q={question} selected={selected} onAnswer={handleAnswer} onAlphabetAid={question.type === "letter_sequence" ? () => { alphabetAidUsed.current = true; } : undefined} />}
+          {question.type === "letters_numbers"    && <VRLettersNumbers     q={question} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} />}
+          {question.type === "number_bracket"     && <VRNumberBracket      q={question} selected={selected} onAnswer={handleAnswer} />}
+          {question.type === "equation_completion"&& <VREquationCompletion q={question} selected={selected} onAnswer={handleAnswer} />}
+          {question.type === "letter_code_analogy"&& <VRLetterCodeAnalogy  q={question} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} />}
+
+          {selected === null && <div className="hint-row">Tap your answer</div>}
+          {selected !== null && (
+            <>
+              <div className={`result-block ${isCorrect ? "correct" : "wrong"}`}>
+                <div className="result-icon">{isCorrect ? "✓" : "✗"}</div>
+                <div className="result-title">{isCorrect ? "Correct!" : "Not quite."}</div>
+                {!isCorrect && <div className="result-correct">The answer was: <strong>{question.correct}</strong></div>}
+                {question.type === "odd_one_out" && question.explanation && <div className="result-word">{question.explanation}</div>}
+                {question.type === "number_bracket" && !isCorrect && question.hint && <div className="result-word">{question.hint}</div>}
               </div>
-            </div>
+              {aiEnabled && (aiLoading || aiCoach) && (
+                <div className="ai-box">
+                  <div className="ai-label">✦ AI Coach</div>
+                  {aiLoading ? <div className="pulsing" style={{ opacity:0.6, fontStyle:"italic" }}>Thinking...</div> : <div>{aiCoach}</div>}
+                </div>
+              )}
+            </>
           )}
-          <div style={{ padding:"10px 14px", background:"var(--green-soft)", fontSize:13, fontWeight:700, color:"var(--green)" }}>
-            ✓ Correct answer: {question.correct}
-          </div>
         </div>
       )}
-      {question && (
-        <button className="action-btn" style={{ marginTop:10, width:"100%" }} onClick={generate}>Next example →</button>
+
+      {question && domain === "vocab" && (
+        <div className="card vocab-dark-card">
+          <div className="vc-prompt-row">
+            <div className="vc-prompt-text">
+              {question.type === "synonym"   && "Choose the word CLOSEST in meaning to:"}
+              {question.type === "antonym"   && "Choose the word MOST OPPOSITE in meaning to:"}
+              {question.type === "definition"&& "Which word matches this definition?"}
+              {question.type === "fillblank" && "Choose the word that completes the sentence:"}
+            </div>
+            <div className={`q-badge badge-${question.type}`}>
+              {question.type === "synonym" ? "Synonym" : question.type === "antonym" ? "Antonym" : question.type === "definition" ? "Definition" : "Fill blank"}
+            </div>
+          </div>
+          {(question.type === "synonym" || question.type === "antonym") ? (
+            <>
+              <div className="vc-word">{question.word}</div>
+              <QuestionAids word={question.word} aidLog={aidLog["__question"]} onAidUsed={(type) => handleAid("__question", type)} />
+            </>
+          ) : (
+            <div className="vc-clue">{question.clue}</div>
+          )}
+          <div className="options-grid">
+            {question.options.map(opt => (
+              <OptionCard key={opt} opt={opt} selected={selected} correct={question.correct}
+                answered={!!selected} onAnswer={handleAnswer} onAidUsed={handleAid} aidLog={aidLog[opt]} />
+            ))}
+          </div>
+          {!selected && <div className="hint-row">Tap an answer — or use 🔊 📖 💡 on any option first</div>}
+          {selected !== null && (
+            <>
+              <div className={`result-block ${isCorrect ? "correct" : "wrong"}`}>
+                <div className="result-icon">{isCorrect ? "✓" : "✗"}</div>
+                <div className="result-title">{isCorrect ? "Correct!" : "Not quite."}</div>
+                {!isCorrect && <div className="result-correct">The answer is: {question.correct}</div>}
+                {(question.type === "definition" || question.type === "fillblank") && (
+                  <div className="result-word">"{question.word}" — {WORD_MAP[question.word]?.simpleDefinition}</div>
+                )}
+                <div className="result-eg">e.g. {WORD_MAP[question.word]?.example}</div>
+              </div>
+              {aiEnabled && (aiLoading || aiCoach) && (
+                <div className="ai-box">
+                  <div className="ai-label">✦ AI Coach</div>
+                  {aiLoading ? <div className="pulsing" style={{ opacity:0.6, fontStyle:"italic" }}>Thinking...</div> : <div>{aiCoach}</div>}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -6340,7 +6473,7 @@ export default function App() {
         ) : tab === "advisor" ? (
           <CoachAdvisor sessionHistory={sessionHistory} leitnerBoxes={leitnerBoxes} />
         ) : tab === "preview" ? (
-          <QuestionPreview maxDifficulty={maxDifficulty} />
+          <QuestionPreview maxDifficulty={maxDifficulty} aiEnabled={aiEnabled} />
         ) : null}
       </div>
       {pendingCelebration && (
