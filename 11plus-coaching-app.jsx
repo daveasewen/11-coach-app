@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 
-const VERSION = "1.17.0";
+const VERSION = "1.18.0";
 
 const BASELINE = {
   overall: { score: 108, total: 200, pct: 54 },
@@ -3733,6 +3733,7 @@ const css = `
   .alpha-cell { display:flex; flex-direction:column; align-items:center; background:rgba(255,255,255,0.1); border-radius:4px; padding:2px 4px; min-width:22px; }
   .alpha-letter { font-size:11px; font-weight:700; color:white; line-height:1.2; }
   .alpha-num { font-size:9px; color:var(--gold); line-height:1.2; }
+  .hint-bubble { margin-top:6px; padding:8px 10px; background:rgba(255,255,255,0.08); border-left:2px solid var(--gold); border-radius:6px; font-size:12px; line-height:1.5; color:rgba(255,255,255,0.9); animation:fadeIn 0.15s ease; }
   .q-reveal { font-size:13px; color:rgba(255,255,255,0.85); font-style:italic; line-height:1.5; margin-bottom:4px; animation:fadeIn 0.15s ease; }
   .q-reveal.simple { font-style:normal; color:var(--gold); font-weight:500; }
   .result-word { font-size:12px; color:inherit; opacity:0.8; margin-top:3px; font-style:italic; }
@@ -4364,7 +4365,44 @@ function VocabSession({ leitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficul
 }
 
 // ─── VR ANALOGY QUESTION ──────────────────────────────────────────────────────
-function VRAnalogy({ q, selected, onAnswer }) {
+// ─── VR HINT HELPERS ─────────────────────────────────────────────────────────
+function getAnalogyHint(q) {
+  const [a, b] = q.given; const s = q.stem;
+  const map = {
+    opposites:       `"${a}" and "${b}" are opposites. Find the opposite of "${s}".`,
+    synonyms:        `"${a}" and "${b}" mean the same thing. Find a word that means the same as "${s}".`,
+    home:            `A ${a} lives in a ${b}. Where does a ${s} live?`,
+    'part-whole':    `A ${a} is part of a ${b}. What is a ${s} part of?`,
+    'young-adult':   `A ${a} grows up to be a ${b}. What does a ${s} grow up to be?`,
+    'person-tool':   `A ${a} uses a ${b}. What does a ${s} use?`,
+    'cause-effect':  `${a} causes ${b}. What does ${s} cause?`,
+    'feature-animal':`${a} belongs to a ${b}. What does ${s} belong to?`,
+    'person-place':  `A ${a} works at a ${b}. Where does a ${s} work?`,
+  };
+  return map[q.category] || `Think: how does "${a}" relate to "${b}"? Apply the same relationship to "${s}".`;
+}
+
+function getLettersNumbersHint(q) {
+  const lv = {A:1,B:2,C:3,D:4,E:5,F:6,G:7,H:8,I:9,J:10};
+  const used = [...new Set((q.expression.match(/[A-J]/g)||[]))];
+  const subs = used.map(l=>`${l}=${lv[l]}`).join(', ');
+  const subExpr = q.expression.replace(/[A-J]/g, l => lv[l]);
+  return `Substitute: ${subs}  →  ${subExpr} = ?`;
+}
+
+function getEquationHint(q) {
+  const evalSafe = s => { try { return Function('"use strict";return('+s.replace(/×/g,'*').replace(/÷/g,'/').replace(/−/g,'-')+')')(); } catch { return null; } };
+  const v = evalSafe(q.lhs);
+  if (v !== null) return `The left side (${q.lhs}) = ${v}. Find the ? that makes the right side equal ${v} too.`;
+  return `Work out each side step by step, then find what ? must be.`;
+}
+
+function getLetterCodeHint(q) {
+  return `Rule: ${q.rule}. Check: ${q.pair1.join('')} → ${q.pair2.join('')}. Now apply the same shifts to ${q.pair3.join('')}.`;
+}
+
+// ─── VR ANALOGY ───────────────────────────────────────────────────────────────
+function VRAnalogy({ q, selected, onAnswer, onHintAid }) {
   return (
     <>
       <div className="q-header">
@@ -4381,6 +4419,11 @@ function VRAnalogy({ q, selected, onAnswer }) {
           <span className="vr-sep">:</span>
           <span className="vr-blank">___</span>
         </div>
+        {onHintAid && (
+          <div className="q-aids" style={{ marginTop:8 }}>
+            <HintAid hint={getAnalogyHint(q)} onUsed={onHintAid} />
+          </div>
+        )}
       </div>
       <div className="options-grid">
         {q.options.map(opt => {
@@ -4403,7 +4446,7 @@ function VRAnalogy({ q, selected, onAnswer }) {
 }
 
 // ─── VR ODD ONE OUT ───────────────────────────────────────────────────────────
-function VROddOneOut({ q, selected, onAnswer }) {
+function VROddOneOut({ q, selected, onAnswer, onHintAid }) {
   return (
     <>
       <div className="q-header">
@@ -4412,6 +4455,11 @@ function VROddOneOut({ q, selected, onAnswer }) {
           <div className="q-badge badge-oddoneout">Categories</div>
         </div>
         <div className="q-prompt">Which word does <strong>not</strong> belong with the others?</div>
+        {onHintAid && (
+          <div className="q-aids" style={{ marginTop:8 }}>
+            <HintAid hint={`Think: what do ${q.displayWords.length - 1} of these words have in common?${q.category ? ` (Theme: ${q.category})` : ''}`} onUsed={onHintAid} />
+          </div>
+        )}
       </div>
       <div className="vr-words-grid">
         {q.displayWords.map(w => {
@@ -4493,10 +4541,24 @@ function AlphabetAid({ onUsed }) {
   );
 }
 
-function VRSequence({ q, selected, onAnswer, onAlphabetAid }) {
+function HintAid({ hint, onUsed }) {
+  const [show, setShow] = useState(false);
+  const handleToggle = () => { if (!show && onUsed) onUsed(); setShow(v => !v); };
+  return (
+    <div>
+      <button className={`q-aid-btn${show ? " used" : ""}`} onClick={handleToggle}>💡 Hint</button>
+      {show && <div className="hint-bubble">{hint}</div>}
+    </div>
+  );
+}
+
+function VRSequence({ q, selected, onAnswer, onAlphabetAid, onHintAid }) {
   const isLetter = q.type === "letter_sequence";
   const badge = isLetter ? "Letter Seq" : "Number Seq";
   const badgeCls = isLetter ? "badge-letterseq" : "badge-numseq";
+  const seqHint = isLetter
+    ? `Pattern: ${q.rule}. Use the Alphabet grid to count steps.`
+    : `Pattern: ${q.rule}. Apply it step by step to each number.`;
   return (
     <>
       <div className="q-header">
@@ -4511,9 +4573,10 @@ function VRSequence({ q, selected, onAnswer, onAlphabetAid }) {
           <span className="vr-seq-sep">→</span>
           <span className="vr-seq-blank">__</span>
         </div>
-        {isLetter && onAlphabetAid && (
+        {(isLetter && onAlphabetAid || onHintAid) && (
           <div className="q-aids" style={{ marginTop:8 }}>
-            <AlphabetAid onUsed={onAlphabetAid} />
+            {isLetter && onAlphabetAid && <AlphabetAid onUsed={onAlphabetAid} />}
+            {onHintAid && <HintAid hint={seqHint} onUsed={onHintAid} />}
           </div>
         )}
       </div>
@@ -4536,7 +4599,7 @@ function VRSequence({ q, selected, onAnswer, onAlphabetAid }) {
 }
 
 // ─── VR LETTERS = NUMBERS ─────────────────────────────────────────────────────
-function VRLettersNumbers({ q, selected, onAnswer, onAlphabetAid }) {
+function VRLettersNumbers({ q, selected, onAnswer, onAlphabetAid, onHintAid }) {
   return (
     <>
       <div className="q-header">
@@ -4550,9 +4613,10 @@ function VRLettersNumbers({ q, selected, onAnswer, onAlphabetAid }) {
           <span className="vr-seq-sep">=</span>
           <span className="vr-eq-blank">?</span>
         </div>
-        {onAlphabetAid && (
+        {(onAlphabetAid || onHintAid) && (
           <div className="q-aids" style={{ marginTop:8 }}>
-            <AlphabetAid onUsed={onAlphabetAid} />
+            {onAlphabetAid && <AlphabetAid onUsed={onAlphabetAid} />}
+            {onHintAid && <HintAid hint={getLettersNumbersHint(q)} onUsed={onHintAid} />}
           </div>
         )}
       </div>
@@ -4614,7 +4678,7 @@ function VRNumberBracket({ q, selected, onAnswer }) {
 }
 
 // ─── VR EQUATION COMPLETION ───────────────────────────────────────────────────
-function VREquationCompletion({ q, selected, onAnswer }) {
+function VREquationCompletion({ q, selected, onAnswer, onHintAid }) {
   // Replace ? on whichever side it appears with the visual blank
   const renderSide = (s) => s.split("?").map((part, i, arr) => (
     <Fragment key={i}>
@@ -4634,6 +4698,11 @@ function VREquationCompletion({ q, selected, onAnswer }) {
           <span className="vr-seq-sep">=</span>
           {renderSide(q.rhs)}
         </div>
+        {onHintAid && (
+          <div className="q-aids" style={{ marginTop:8 }}>
+            <HintAid hint={getEquationHint(q)} onUsed={onHintAid} />
+          </div>
+        )}
       </div>
       <div className="options-grid">
         {q.options.map(opt => {
@@ -4654,7 +4723,7 @@ function VREquationCompletion({ q, selected, onAnswer }) {
 }
 
 // ─── VR LETTER CODE ANALOGY ───────────────────────────────────────────────────
-function VRLetterCodeAnalogy({ q, selected, onAnswer, onAlphabetAid }) {
+function VRLetterCodeAnalogy({ q, selected, onAnswer, onAlphabetAid, onHintAid }) {
   const fmt = (pair) => pair.join("");
   return (
     <>
@@ -4672,9 +4741,10 @@ function VRLetterCodeAnalogy({ q, selected, onAnswer, onAlphabetAid }) {
           <span className="vr-sep">:</span>
           <span className="vr-blank">___</span>
         </div>
-        {onAlphabetAid && (
+        {(onAlphabetAid || onHintAid) && (
           <div className="q-aids" style={{ marginTop:8 }}>
-            <AlphabetAid onUsed={onAlphabetAid} />
+            {onAlphabetAid && <AlphabetAid onUsed={onAlphabetAid} />}
+            {onHintAid && <HintAid hint={getLetterCodeHint(q)} onUsed={onHintAid} />}
           </div>
         )}
       </div>
@@ -4790,12 +4860,14 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
   const t0 = useRef(Date.now());
   const timeoutFired = useRef(false);
   const alphabetAidUsed = useRef(false);
+  const hintAidUsed = useRef(false);
 
   useEffect(() => {
     if (!queue.length || idx >= queue.length) { setDone(true); return; }
     setSelected(null); setAiCoach(null); t0.current = Date.now();
     timeoutFired.current = false;
     alphabetAidUsed.current = false;
+    hintAidUsed.current = false;
   }, [idx, queue]);
 
   useEffect(() => {
@@ -4819,7 +4891,7 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
     const q = queue[idx];
     const isTimedOut = opt === "__timeout__";
     const isCorrect = !isTimedOut && opt === q.correct;
-    setResults(r => [...r, { id: q.id, correct: isCorrect, type: q.type, timeMs, timedOut: isTimedOut, isNextBand: q.isNextBand || false, alphabetAidUsed: alphabetAidUsed.current }]);
+    setResults(r => [...r, { id: q.id, correct: isCorrect, type: q.type, timeMs, timedOut: isTimedOut, isNextBand: q.isNextBand || false, alphabetAidUsed: alphabetAidUsed.current, hintAidUsed: hintAidUsed.current }]);
 
     if (aiEnabled) {
       setAiLoading(true);
@@ -4926,14 +4998,14 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
             <div className="timer-bar-fill" style={{ width:`${Math.max(0,(30-elapsed)/30*100)}%`, background: elapsed >= 25 ? "var(--red)" : elapsed >= 18 ? "var(--gold)" : "var(--green)" }} />
           </div>
         )}
-        {q.type === "analogy"                                              && <VRAnalogy   q={q} selected={selected} onAnswer={handleAnswer} />}
-        {q.type === "odd_one_out"                                          && <VROddOneOut  q={q} selected={selected} onAnswer={handleAnswer} />}
+        {q.type === "analogy"                                              && <VRAnalogy   q={q} selected={selected} onAnswer={handleAnswer} onHintAid={() => { hintAidUsed.current = true; }} />}
+        {q.type === "odd_one_out"                                          && <VROddOneOut  q={q} selected={selected} onAnswer={handleAnswer} onHintAid={() => { hintAidUsed.current = true; }} />}
         {(q.type === "antonym_pair" || q.type === "synonym_pair")          && <VRWordPair  q={q} selected={selected} onAnswer={handleAnswer} />}
-        {(q.type === "letter_sequence" || q.type === "number_sequence")    && <VRSequence  q={q} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} />}
-        {q.type === "letters_numbers"                                      && <VRLettersNumbers     q={q} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} />}
+        {(q.type === "letter_sequence" || q.type === "number_sequence")    && <VRSequence  q={q} selected={selected} onAnswer={handleAnswer} onAlphabetAid={q.type === "letter_sequence" ? () => { alphabetAidUsed.current = true; } : undefined} onHintAid={() => { hintAidUsed.current = true; }} />}
+        {q.type === "letters_numbers"                                      && <VRLettersNumbers     q={q} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} onHintAid={() => { hintAidUsed.current = true; }} />}
         {q.type === "number_bracket"                                       && <VRNumberBracket      q={q} selected={selected} onAnswer={handleAnswer} />}
-        {q.type === "equation_completion"                                  && <VREquationCompletion q={q} selected={selected} onAnswer={handleAnswer} />}
-        {q.type === "letter_code_analogy"                                  && <VRLetterCodeAnalogy  q={q} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} />}
+        {q.type === "equation_completion"                                  && <VREquationCompletion q={q} selected={selected} onAnswer={handleAnswer} onHintAid={() => { hintAidUsed.current = true; }} />}
+        {q.type === "letter_code_analogy"                                  && <VRLetterCodeAnalogy  q={q} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} onHintAid={() => { hintAidUsed.current = true; }} />}
         {selected === null && <div className="hint-row">Tap your answer</div>}
         {selected !== null && (
           <>
@@ -4943,6 +5015,11 @@ function VRSession({ vrLeitnerBoxes, onSessionEnd, aiEnabled, mode, maxDifficult
               {!isCorrect && <div className="result-correct">The answer was: <strong>{q.correct}</strong></div>}
               {q.type === "odd_one_out" && q.explanation && <div className="result-word">{q.explanation}</div>}
               {q.type === "number_bracket" && !isCorrect && q.hint && <div className="result-word">{q.hint}</div>}
+              {(q.type === "letter_sequence" || q.type === "number_sequence") && !isCorrect && <div className="result-word">Pattern: {q.rule}</div>}
+              {q.type === "analogy" && !isCorrect && <div className="result-word">{getAnalogyHint(q)}</div>}
+              {q.type === "equation_completion" && !isCorrect && <div className="result-word">{getEquationHint(q)}</div>}
+              {q.type === "letter_code_analogy" && !isCorrect && <div className="result-word">{getLetterCodeHint(q)}</div>}
+              {q.type === "letters_numbers" && !isCorrect && <div className="result-word">{getLettersNumbersHint(q)}</div>}
               {!timedMode && elapsed > 30 && <div className="slow-flag">⏱ {elapsed}s — aim for under 30s</div>}
             </div>
             {aiEnabled && (aiLoading || aiCoach) && (
@@ -5612,6 +5689,7 @@ function QuestionPreview({ maxDifficulty, aiEnabled }) {
   const t0          = useRef(Date.now());
   const answerTimeMs = useRef(0);
   const alphabetAidUsed = useRef(false);
+  const hintAidUsed = useRef(false);
 
   const types = domain === "vr" ? VR_PREVIEW_TYPES : VOCAB_PREVIEW_TYPES;
 
@@ -5628,6 +5706,7 @@ function QuestionPreview({ maxDifficulty, aiEnabled }) {
     setQuestion(null); setError(null); setSelected(null); setElapsed(0);
     setAiCoach(null); setAiLoading(false); setAidLog({});
     alphabetAidUsed.current = false;
+    hintAidUsed.current = false;
   };
 
   const handleDomainChange = (d) => {
@@ -5771,14 +5850,14 @@ function QuestionPreview({ maxDifficulty, aiEnabled }) {
           <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:6 }}>
             <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>⏱ {selected !== null ? `${(answerTimeMs.current/1000).toFixed(1)}s` : `${elapsed}s`}</span>
           </div>
-          {question.type === "analogy"         && <VRAnalogy          q={question} selected={selected} onAnswer={handleAnswer} />}
-          {question.type === "odd_one_out"     && <VROddOneOut        q={question} selected={selected} onAnswer={handleAnswer} />}
+          {question.type === "analogy"         && <VRAnalogy          q={question} selected={selected} onAnswer={handleAnswer} onHintAid={() => { hintAidUsed.current = true; }} />}
+          {question.type === "odd_one_out"     && <VROddOneOut        q={question} selected={selected} onAnswer={handleAnswer} onHintAid={() => { hintAidUsed.current = true; }} />}
           {(question.type === "antonym_pair" || question.type === "synonym_pair") && <VRWordPair q={question} selected={selected} onAnswer={handleAnswer} />}
-          {(question.type === "letter_sequence" || question.type === "number_sequence") && <VRSequence q={question} selected={selected} onAnswer={handleAnswer} onAlphabetAid={question.type === "letter_sequence" ? () => { alphabetAidUsed.current = true; } : undefined} />}
-          {question.type === "letters_numbers"    && <VRLettersNumbers     q={question} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} />}
+          {(question.type === "letter_sequence" || question.type === "number_sequence") && <VRSequence q={question} selected={selected} onAnswer={handleAnswer} onAlphabetAid={question.type === "letter_sequence" ? () => { alphabetAidUsed.current = true; } : undefined} onHintAid={() => { hintAidUsed.current = true; }} />}
+          {question.type === "letters_numbers"    && <VRLettersNumbers     q={question} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} onHintAid={() => { hintAidUsed.current = true; }} />}
           {question.type === "number_bracket"     && <VRNumberBracket      q={question} selected={selected} onAnswer={handleAnswer} />}
-          {question.type === "equation_completion"&& <VREquationCompletion q={question} selected={selected} onAnswer={handleAnswer} />}
-          {question.type === "letter_code_analogy"&& <VRLetterCodeAnalogy  q={question} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} />}
+          {question.type === "equation_completion"&& <VREquationCompletion q={question} selected={selected} onAnswer={handleAnswer} onHintAid={() => { hintAidUsed.current = true; }} />}
+          {question.type === "letter_code_analogy"&& <VRLetterCodeAnalogy  q={question} selected={selected} onAnswer={handleAnswer} onAlphabetAid={() => { alphabetAidUsed.current = true; }} onHintAid={() => { hintAidUsed.current = true; }} />}
 
           {selected === null && <div className="hint-row">Tap your answer</div>}
           {selected !== null && (
@@ -5789,6 +5868,11 @@ function QuestionPreview({ maxDifficulty, aiEnabled }) {
                 {!isCorrect && <div className="result-correct">The answer was: <strong>{question.correct}</strong></div>}
                 {question.type === "odd_one_out" && question.explanation && <div className="result-word">{question.explanation}</div>}
                 {question.type === "number_bracket" && !isCorrect && question.hint && <div className="result-word">{question.hint}</div>}
+                {(question.type === "letter_sequence" || question.type === "number_sequence") && !isCorrect && <div className="result-word">Pattern: {question.rule}</div>}
+                {question.type === "analogy" && !isCorrect && <div className="result-word">{getAnalogyHint(question)}</div>}
+                {question.type === "equation_completion" && !isCorrect && <div className="result-word">{getEquationHint(question)}</div>}
+                {question.type === "letter_code_analogy" && !isCorrect && <div className="result-word">{getLetterCodeHint(question)}</div>}
+                {question.type === "letters_numbers" && !isCorrect && <div className="result-word">{getLettersNumbersHint(question)}</div>}
               </div>
               {aiEnabled && (aiLoading || aiCoach) && (
                 <div className="ai-box">

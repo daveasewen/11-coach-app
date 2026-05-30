@@ -15,6 +15,7 @@ This document serves as the single source of truth for coaching preparation towa
 |---|---|---|
 | 1.0 | April 2026 | Initial document — baseline assessment, strategy, schedule |
 | 2.0 | May 2026 | Added digital coaching app (v1.11 live); updated vocab bank to 731 words; added VR question types; updated Phase 1 progress; added app feature summary; added deployment planning section |
+| 2.1 | May 2026 | App live-hosted on Vercel; hosting options evaluated; Vercel + Supabase selected as long-term stack |
 
 ---
 
@@ -276,6 +277,11 @@ Mastery-triggered difficulty band unlocks replacing static age-gating:
 ### App
 - 11+ coach app (custom-built, daily use) — primary vocab and VR practice tool
 - Dashboard available to Dave and tutor
+- **Live URL:** https://11-coach-app.vercel.app
+- **Hosting:** Vercel (free Hobby plan), auto-deploys on push to `master` branch
+- **Repository:** https://github.com/daveasewen/11-coach-app (private)
+- **Vercel account:** daveasewen (GitHub OAuth)
+- **Planned stack evolution:** Vercel (frontend) + Supabase (Postgres DB + auth) when multi-device sync and user accounts are needed
 
 ### Supplementary
 - GL Assessment familiarisation papers (free from Kent/Bexley council websites)

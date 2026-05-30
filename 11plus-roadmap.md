@@ -1,7 +1,7 @@
 # 11+ Coach App — Product Roadmap & Spec
 
-*Living document. Update this alongside the session handover after every significant change.*
-*Last updated: May 2026 — v1.5c JSX complete, rebuild pending*
+*Living document. Updated automatically from session handovers after each session.*
+*Last updated: 21 May 2026 — v1.18.0*
 
 ---
 
@@ -37,189 +37,156 @@ NVR deprioritised — review August 2026 if other domains on track.
 
 ---
 
-## Current State — v1.5 (Shipped ✅)
+## Current State — v1.18.0 ✅
 
-- **Vocab bank:** 648 words (149 original + 178 Quest words + 177 new entries + 144 Exam Ninja entries, May 2026)
-- **Etymology + mnemonic layer:** ~70 words have `rootTip` hooks (Latin/Greek roots, sound associations, vivid images) — fed into AI coaching prompt when a word is answered
-- **ROOT_TIPS object:** Injected at build time from `root-tips.js`. Separate from VOCAB_BANK schema — easy to extend
-- **4 question formats:** synonym, antonym, definition, fill-in-the-blank
-- **Leitner spaced repetition:** 6 boxes, format-aware mastery (box ≥3 AND all formats passed)
-- **Aid buttons:** Pronounce, Definition, Simple Definition (on question word + each option)
-- **Timer UI:** live elapsed-seconds pill (green/amber/red), QPM on session completion
-- **30-second slow flag:** amber warning banner on result card when question took >30s
-- **Timing card (Coach):** avg time per question, per-format speed breakdown, slow words list
-- **Format progress table (Coach):** Syn/Ant/Def/Fill pip indicators per word in Vocabulary card
-- **AI coaching:** student mode (memory tricks, max 2 sentences) + coach mode (observation + action)
-- **Platform:** Cowork artifact (`11plus-coach`), self-contained HTML built from JSX source
-- **Storage:** localStorage in built HTML
+**Build:** `11plus-coaching-app.jsx` → `node build.js` → babel → terser → `node assemble.js` → `11plus-coach.html` (759 KB)
+
+### Core loop
+- **Vocab practice** — Leitner spaced repetition, ~1541-word bank, 4 question types (synonym / antonym / definition / fill-blank)
+- **VR practice** — Leitner spaced repetition across 9 question types (see table below)
+- **Progression system** — mastery-based difficulty band unlock, celebration overlays
+- **Timed mode** — 30s per question, auto-submit on timeout
+- **Streak + badges**
+- **Session history** — stored per profile, shown in dashboard
+
+### VR question types (all live)
+
+| Type | Generator | Hints & Aids |
+|------|-----------|--------------|
+| analogy | VR_BANK (static) | 💡 Hint (relationship), post-answer hint |
+| odd_one_out | VR_BANK (static) | 💡 Hint (category), post-answer explanation |
+| antonym_pair / synonym_pair | ANTONYM_BANK / SYNONYM_BANK | — |
+| letter_sequence | generateLetterSequence | 🔤 Alphabet + 💡 Hint (pattern rule) |
+| number_sequence | generateNumberSequence | 💡 Hint (pattern rule) |
+| letters_numbers | lettersNumbersGenerator | 🔤 Alphabet + 💡 Hint (substitution steps) |
+| number_bracket | numberBracketGenerator | post-answer step hint |
+| equation_completion | equationCompletionGenerator | 💡 Hint (evaluates LHS, gives target) |
+| letter_code_analogy | letterCodeAnalogyGenerator | 🔤 Alphabet + 💡 Hint (rule + worked check) |
+
+### Aids system
+- `AlphabetAid` — A(1)–Z(26) grid toggle, turns gold when used
+- `HintAid` — type-specific hint text, turns gold when used
+- `alphabetAidUsed` + `hintAidUsed` tracked per question (data captured, not yet enforced in progression)
+
+### Coach features
+- **Preview Qs tab** — fully interactive (coach answers for real, timer, result block, all aids, AI coaching if enabled)
+- **AI Advisor tab** — session-history analysis
+- **Dashboard** — Leitner box progress, session history charts
+
+### AI coaching (optional, off by default)
+- Header pill toggle → if no API key → `AiKeyModal` (validates `sk-ant-`/`sk-` prefix, stores to `localStorage('11plus:api-key')`)
+- Works in Cowork env via `window.cowork.askClaude` (no key needed)
+- Per-type AI prompts in VRSession and VocabSession
+- `aiEnabled` prop threaded through to VRSession, VocabSession, QuestionPreview
+
+### Mini games
+- **Letter Blitz** — A=1..Z=26 drill, 20 questions, 4 types, personal best tracking
+
+### Profile system
+- Multi-profile, per-profile storage keys, year group, avatar
+- Export/import JSON backup
+- Reset progress
+
+### Storage
+- `storageGet` / `storageSet` — localStorage with `getUserStorageKeys(profileId)` namespacing
+- Key shapes: leitnerBoxes, vrLeitner, sessionHistory, streakData, progression, letterBlitzBest
+
+---
+
+## Version History
+
+| Version | Key changes |
+|---|---|
+| v1.3 | Timer + Dashboard — 30s rule, timing metrics, per-format speed breakdown |
+| v1.4 | Content quality pass — antonym/synonym audit (25 fixes), bank scaled to 504 words |
+| v1.5 | Etymology + mnemonic layer — `rootTip` field, ~70 words with hooks, AI coaching revamp |
+| v1.6 | User profiles — multi-profile, per-profile storage, avatars |
+| v1.7 | VR foundation — first VR question types, Leitner for VR |
+| v1.8 | VR expansion — analogy, odd_one_out, antonym_pair/synonym_pair, letter/number sequences |
+| v1.9 | VR aids — AlphabetAid, HintAid, per-type hint logic |
+| v1.10 | VR completion — letters_numbers, number_bracket, equation_completion, letter_code_analogy |
+| v1.11 | Vocab bank scaling — ~1541 words |
+| v1.12 | Progression system — mastery-based difficulty band unlock, celebration overlays |
+| v1.13 | Timed mode — 30s per question, auto-submit |
+| v1.14 | Streaks + badges |
+| v1.15 | Letter Blitz mini-game |
+| v1.16 | Coach preview tab — fully interactive, all aids, AI coaching |
+| v1.17 | AI Advisor tab — session history analysis |
+| v1.18 | Session history charts in dashboard |
 
 ---
 
 ## Roadmap
 
-### v1.3 — Timer + Dashboard ✅ (Shipped May 2026)
-
-**Goal:** Surface timing data so slow questions can be identified and targeted.
+### Next up — candidates for v1.19+
 
 | Feature | Priority | Notes |
 |---|---|---|
-| 30-second rule mode | High | ✅ Amber flag on result card when >30s, shows time taken |
-| Timing metrics card (Coach) | High | ✅ Avg time, per-format breakdown, slow words list |
-| Per-format speed breakdown | Medium | ✅ Sorted table: slowest format first |
-| Format breakdown per word (Vocab dashboard) | Medium | ✅ Pip indicators (Syn/Ant/Def/Fill) per word, scrollable |
+| Soft progression — mastery-triggered next-band unlock | Medium | Deferred from v1.7. Discuss before v1.19 planning. Data already captured in progression system. |
+| Aid-usage progression gates | Low | `hintAidUsed` + `alphabetAidUsed` captured per question. Logic not yet enforced. |
+| Shift Trainer mini-game | Low | After Letter Blitz proven useful |
+| Alphabet Tap mini-game | Low | Lower priority |
+| Admin layer — reset, export CSV, Leitner overrides, session length config | Medium | First piece: reset button in profile editor |
+| Coaching memory / pattern detection | Medium | Needs ~20+ timed sessions of data |
 
-### v1.4 — Content Quality Pass
-
-**Goal:** Fix known data quality issues before scaling the bank further.
-
-| Feature | Priority | Notes |
-|---|---|---|
-| Antonym/synonym accuracy audit | ~~High~~ | ✅ Done May 2026 — 25 corrections, all 327 words reviewed. |
-| Vocab bank scaling to 500+ words | ~~Medium~~ | ✅ Done May 2026 — 504 words. 177 new entries added (character adjectives, verbs, nouns). All pass antonym quality bar. |
-| Multi-word antonym removal | ~~High~~ | ✅ Done May 2026 — 16 entries fixed, all multi-word synonyms/antonyms replaced with single-word equivalents. |
-
-### v1.5 — Enhanced Coaching (Etymology + Mnemonics)
-
-**Goal:** Give the AI coach real ammunition — pre-researched roots, mnemonics, and hooks — so it stops generating generic analysis and starts giving memory tricks that actually stick.
-
-**Why this matters:** Root knowledge is a decoding skill, not just a memory trick. A student who knows *vivere* (to live) gets vivacious, vivid, revive, survive, convivial for free. That transfers into comprehension and verbal reasoning, not just vocab recall. Pre-built hooks are also far more reliable than AI-improvised ones — the AI's job becomes incorporating a specific anchor, not inventing one from scratch.
-
-**Three-layer design:**
-
-| Layer | What | Notes |
-|---|---|---|
-| Content research | Latin/Greek roots per word — root meaning, 2–3 sibling words that share it | Deep research task. Do pilot batch first (60–80 words with clearest roots) |
-| Mnemonic hooks | One sharp sentence per word — root explanation OR vivid image OR sound trick | Hand-crafted, not AI-generated. Max 15 words, age-appropriate |
-| Schema extension | Add optional `rootTip` field to VOCAB_BANK entries | Schema stays backward compatible — field is optional |
-| Code integration | Pass `rootTip` into AI coaching prompt when available | Small code change. AI builds on the hook rather than improvising |
-
-**Root patterns to research (pilot batch — highest leverage):**
-
-| Root | Meaning | Words in bank |
-|---|---|---|
-| *vivere* (Latin) | to live | vivacious, convivial |
-| *grex/gregis* (Latin) | flock, group | gregarious |
-| *supercilium* (Latin) | eyebrow | supercilious |
-| *animus* (Latin) | spirit, mind | animosity, magnanimous |
-| *cred-* (Latin) | believe | credulous |
-| *fort-* (Latin) | strong | fortitude |
-| *viv-/vinc-* (Latin) | conquer | vanquish, vindicate |
-| *sequ-* (Latin) | follow | obsequious |
-| *fall-/fals-* (Latin) | fail, deceive | fallible, infallible |
-| *greg-* (Latin) | assemble | gregarious |
-| *loqui-* (Latin) | speak | eloquence |
-| *phil-/anthrop-* (Greek) | love / human | philanthropy |
-| *hyp-/hybris* (Greek) | excessive pride | hubris |
-| *zelos* (Greek) | fervor | zeal |
-| *chron-* (Greek) | time | not many — skip |
-| *clem-* (Latin) | mild | clemency |
-| *cap-/capit-* (Latin) | head | capitulate |
-| *jud-* (Latin) | judge | judicious, prejudice |
-| *mit-* (Latin) | soften | mitigate |
-
-**Mnemonic patterns (where no clear root):**
-
-- Sound association: *taciturn* → "taci-TURN-ing their back on every conversation"
-- Visual image: *supercilious* → eyebrow raised at everyone (built into the Latin)
-- Story hook: *cantankerous* → "can't anchor us" — impossible to pin down, always arguing
-- Contrast pair: *fallible* vs *infallible* — teach together, one cancels the other
-
-**Sequencing:**
-1. Research phase — content operation, can run in parallel with v1.4 code work
-2. Pilot integration — add `rootTip` to 60–80 words, wire into coaching prompt, test
-3. Full rollout — remaining words, filling gaps where no root hook is available
-
-### v1.6 — User Profiles
-
-**Goal:** Support more than one user without data collision. Must be done before a second person (sibling, tutor, etc.) uses the app — sharing a single flat storage namespace would silently corrupt both users' Leitner data.
-
-**Why now:** Dave's son's progress is real and being saved. Adding a second user without profiles would overwrite it.
-
-**Scope — targeted, not a rebuild:**
+### August 2026 review point
 
 | Feature | Priority | Notes |
 |---|---|---|
-| Profile selector on launch | High | Simple screen: pick your name. Two profiles to start (Dave's son + one spare). |
-| Per-user storage key prefix | High | `11plus:user:<id>:vocab-mastered` etc. Single-line change per storage key. |
-| Profile creation | Medium | Add name, select avatar/colour. Stored in `11plus:profiles`. |
-| Active profile in app header | Medium | Small indicator so it's always clear whose session this is. |
+| NVR questions | Medium | Deprioritised — revisit August 2026 if other domains on track |
+| Maths questions | Low | 25% Bexley weighting. Deprioritised. |
+| Comprehension/Cloze | Medium | 59% baseline — meaningful gap to close |
 
-**What doesn't change:** Leitner logic, question formats, vocab bank, AI coaching — all unchanged. This is purely a storage namespace + UI wrapper.
+### Backend track — Supabase (active, feature/supabase branch)
 
-### v1.7 — Age Band Expansion (Ages 8–9)
+Running in parallel with core app development. See `supabase-progress.md` for detailed task status.
 
-**Goal:** Make the vocab bank useful for younger siblings and earlier-stage prep. No architecture changes needed — difficulty field already exists on every word.
-
-**Why this fits the product vision:** "Built for one child, architected to generalise." The difficulty(1–5) field in the schema is the hook. Words already in the bank skew difficulty 3–4 because that's where the 11+ gap was. Covering 8–9 year olds is a content operation + one small code filter.
-
-**Age → difficulty mapping:**
-
-| Age | Difficulty band | Description |
+| Feature | Status | Notes |
 |---|---|---|
-| 8 | 1–2 | Words they're learning to read fluently — clear, concrete meanings |
-| 9 | 2–3 | Bridging vocab — starting to encounter in books and comprehension |
-| 10–11 | 3–5 | Current bank focus — 11+ exam vocabulary |
+| Supabase project setup | Not started | Free tier, Postgres + Auth + JS client |
+| Dual-mode storage adapter | Not started | Supabase first, localStorage fallback — app always works offline |
+| Login/signup screen | Not started | Email + password; minimal UI added to JSX |
+| localStorage → Supabase data migration | Not started | Auto-migrates on first login; localStorage kept as offline cache |
+| Vercel preview deployment | Not started | `feature/supabase` branch → preview URL; `main` stays live for Alex |
 
-| Feature | Priority | Notes |
-|---|---|---|
-| Age 8 word bank (difficulty 1–2) | Medium | ~200 words. The Exam Ninja words we filtered as "too easy for 11+" are a ready starting point |
-| Age 9 word bank (difficulty 2–3) | Medium | ~150 words. Bridge band — overlap with current bank at the lower end |
-| Difficulty filter / level selector | Medium | Small code change — filter session queue to difficulty band matching the child's age. Schema already supports it |
-
-**Note:** The ~85 Exam Ninja gap words filtered from v1.4 (judged too simple for 11+) are exactly right for the 8–9 band. That list is a near-complete starting point for difficulty 1–2.
-
-### v1.8 — New Question Domains
-
-**Goal:** Start coverage of non-vocab domains.
-
-| Feature | Priority | Notes |
-|---|---|---|
-| Maths question bank | Medium | 25% Bexley weighting — start after vocab quality locked |
-| Comprehension/Cloze | Medium | 59% baseline, meaningful gap to close |
-| Shuffled sentences (Verbal Reasoning) | Low | 64% baseline, lowest gap |
+**Branching rule:** Core app work stays on `main`. Backend work on `feature/supabase`. Docs (handovers, roadmap) stay on `main` throughout. Full handover written on merge day.
 
 ### Future / Not Committed
 
 - Standalone hosting (Netlify/GitHub Pages)
 - Exam region config (generalise beyond Kent/Bexley)
-- **Backend / database** — localStorage is the current storage layer (survives artifact updates, device-local). As the product grows (multiple devices, tutors accessing student data, multiple families), a proper backend will be needed. Likely a simple hosted database (Supabase or similar) with per-user auth. Decision point: when a second device needs to access the same progress data.
-- Child profiles + initial assessment
-- Multi-user support
 - Tutor collaboration workflow
-- Difficulty level progression
 - Coaching tone calibration (untested with actual child)
 - Question bank authoring UI
-- Data export / backup (JSON download of all progress data as a safety net)
+- API proxy (Anthropic key server-side) — Phase 2, after auth is in place
 
 ---
 
-## Known Issues
+## Known Issues / Backlog
 
 | Issue | Severity | Status | Notes |
 |---|---|---|---|
-| Antonym/synonym accuracy | High | ✅ Fixed (May 2026) | 25 corrections across all 327 words. Multi-word phrases removed, imprecise antonyms cut, 3 words had antonym field removed entirely (retort, feign, manipulate — no clean single-word antonym exists). |
-| AI coaching — old prompts too academic | Fixed ✅ | Shipped in v1.2c + prompt tightening May 2026 | Student: concrete examples, no comparisons. Coach: 2 sentences, no waffle. |
 | Format badge visibility | Low | 🟡 Backlog | Make format badge more prominent — silly mistakes reading question type |
 
 ---
 
 ## Data / Content Operations
 
-These are content tasks, not code tasks. Run as separate operations.
-
 | Task | Status | Notes |
 |---|---|---|
 | Original 149-word bank | ✅ Done | Hand-crafted, reviewed |
 | Quest PDF cross-reference (178 words) | ✅ Done | May 2026 |
-| Antonym/synonym accuracy audit | ✅ Done (May 2026) | 25 corrections across all 327 words. Single-word, precise antonyms enforced. |
+| Antonym/synonym accuracy audit | ✅ Done (May 2026) | 25 corrections across all 327 words |
 | Distractor dictionary (804 entries) | ✅ Done | Used for option card definitions |
-| Scale to 500+ words | ✅ Done (May 2026) | 504 words. 177 new entries — character adjectives, verbs, nouns. All entries audited against antonym quality bar. |
-| Exam Ninja 1800-word list cross-reference | ✅ Done (May 2026) | 144 new entries added from cross-reference against 1800-word list. Bank now 648 words. |
+| Scale to 504 words | ✅ Done (May 2026) | 177 new entries — character adjectives, verbs, nouns |
+| Exam Ninja 1800-word cross-reference | ✅ Done (May 2026) | 144 new entries added. Bank reached 648 words. |
+| Etymology/mnemonic layer (`rootTip`) | ✅ Done (v1.5) | ~70 words have root tips injected at build time |
+| Scale to ~1541 words | ✅ Done (v1.11) | — |
 
 **Vocab bank schema (stable — do not change):**
-`{ word, definition, simpleDefinition, synonyms[], antonyms[], difficulty(1–5), pos, example }`
+`{ word, definition, simpleDefinition, synonyms[], antonyms[], difficulty(1–5), pos, example, rootTip? }`
 
-**Quality bar for antonyms:** Single word. Directly opposite in meaning (not associatively related). Same or compatible POS with the target word. Age-appropriate for 10–11 year olds.
+**Quality bar for antonyms:** Single word. Directly opposite in meaning. Same or compatible POS. Age-appropriate for 10–11 year olds.
 
 ---
 
@@ -233,9 +200,11 @@ These are content tasks, not code tasks. Run as separate operations.
 | Leitner mastery = box ≥3 AND all formats | Box alone insufficient — word must be seen in all available question types | May 2026 |
 | AI enhances, does not enable | App must work fully offline/AI-off. Static definitions always available | May 2026 |
 | Coaching prompts: completion-style with Sentence: cue | Forces single-sentence output from Haiku, prevents academic analysis waffle | May 2026 |
-| Etymology/mnemonic layer planned for v1.5 | Pre-built root tips beat AI-improvised hooks — AI should build on an anchor, not invent one. Schema extension (optional `rootTip` field) keeps it backward compatible. | May 2026 |
+| Etymology/mnemonic layer (v1.5) | Pre-built root tips beat AI-improvised hooks — AI should build on an anchor, not invent one | May 2026 |
 | Tightened coaching prompts (student mode) | Ban "however"/"while", require concrete examples, no word comparisons | May 2026 |
-| Antonym quality: must be precise not associative | "reveal" as antonym of "delude" accepted by app but pedagogically weak — triggers full audit | May 2026 |
+| Antonym quality: must be precise not associative | "reveal" as antonym of "delude" accepted by app but pedagogically weak — triggered full audit | May 2026 |
+| AI off by default | Key prompt shown when AI selected without key; core loop never depends on AI | May 2026 |
+| Aid usage tracked but not gated | Data captured (hintAidUsed, alphabetAidUsed) for future progression gates — not yet enforced | May 2026 |
 
 ---
 
@@ -247,3 +216,15 @@ These are content tasks, not code tasks. Run as separate operations.
 4. **Backlog items are tracked, not ignored.** Explicit deferral is a decision.
 5. **Architecture supports generalisation.** Don't build it. Don't foreclose it.
 6. **Challenge drift.** If a feature doesn't trace to exam outcome, question it directly.
+
+---
+
+## Key Implementation Notes
+
+- VERSION constant at top of JSX — bump for every shipped change
+- `buildVRQueue` pulls from Leitner boxes + fills with due/new questions
+- `generateVRByType(type, maxDiff)` is the single dispatch for all generated types
+- `HintAid` and helpers (`getAnalogyHint`, `getEquationHint`, `getLettersNumbersHint`, `getLetterCodeHint`) live just before VR component definitions
+- Babel "deoptimised styling" warning on build = normal (file >500 KB), not an error
+- Dave commits to GitHub manually — never run git commands; provide a commit summary instead
+- Always use `./node_modules/.bin/babel`, never `npx babel`
